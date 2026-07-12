@@ -1,7 +1,6 @@
 package top.yukonga.mishka.ui.screen.settings
 
 import androidx.compose.foundation.LocalOverscrollFactory
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +36,7 @@ import top.yukonga.mishka.platform.ProfileFileManager
 import top.yukonga.mishka.platform.showToast
 import top.yukonga.mishka.ui.component.blur.BlurredBar
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
+import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
 import top.yukonga.mishka.viewmodel.SubscriptionViewModel
 import top.yukonga.miuix.kmp.basic.Card
@@ -186,7 +186,7 @@ fun FileManagerEditorScreen(
                 CodeEditor(
                     controller = controller,
                     language = if (isYamlPath(relativePath)) EditorLanguage.Yaml else EditorLanguage.PlainText,
-                    colors = if (isSystemInDarkTheme()) EditorColors.Default else EditorColors.Light,
+                    colors = if (LocalAppDarkMode.current) EditorColors.Default else EditorColors.Light,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),

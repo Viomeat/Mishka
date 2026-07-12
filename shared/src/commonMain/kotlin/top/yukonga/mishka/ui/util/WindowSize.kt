@@ -15,32 +15,45 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import top.yukonga.mishka.ui.theme.LocalPlatformDensity
 
 /** 宽屏阈值：窗口宽度达到此值时启用侧边导航栏与内容居中（平板、横屏、展开态折叠屏、桌面）。 */
 private val WideScreenMinWidth = 600.dp
 
 /** 宽屏下内容的最大宽度，超出后两侧留白居中，避免超宽窗口下卡片被过度拉伸。 */
-val MaxContentWidth: Dp = 600.dp
+val MaxContentWidth: Dp = 800.dp
 
 /** 当前窗口是否达到宽屏尺寸。宽屏切换到 NavigationRail + 固定小标题栏 + 内容居中。 */
 @Composable
 fun rememberIsWideScreen(): Boolean {
     val containerSize = LocalWindowInfo.current.containerSize
-    return with(LocalDensity.current) { containerSize.width.toDp() >= WideScreenMinWidth }
+    val density = LocalPlatformDensity.current ?: LocalDensity.current
+    return with(density) { containerSize.width.toDp() >= WideScreenMinWidth }
 }
 
 /**
  * 宽屏内容居中容器：按当前可用宽度算出单侧留白量并经 [content] 回传，交给内部滚动列表加进自己的
  * `contentPadding`——列表本身保持全宽（滚动手势覆盖整屏、两侧无死区），仅其中的内容被居中限制到
  * [MaxContentWidth]。窄屏（可用宽度不足上限）留白为 0，等同无操作。
+ *
+ * 是否居中必须复用 [rememberIsWideScreen] 的判定：外壳（NavigationRail/底栏）用缩放前密度量
+ * 600dp，而本容器的 BoxWithConstraints 在 densityScale 覆盖后的 LocalDensity 下量宽——若各自
+ * 独立比较 600dp，densityScale != 1 时会出现「手机外壳 + 内容莫名内缩」或「rail 外壳 + 内容不居中」
+ * 的组合。以外壳判定为唯一权威，留白量本身仍在缩放后空间计算（contentPadding 消费缩放后 dp）。
  */
 @Composable
 fun WideContentBox(
     modifier: Modifier = Modifier,
     content: @Composable (sidePadding: Dp) -> Unit,
 ) {
+    val isWideScreen = rememberIsWideScreen()
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        content(((maxWidth - MaxContentWidth) / 2).coerceAtLeast(0.dp))
+        val sidePadding = if (isWideScreen) {
+            ((maxWidth - MaxContentWidth) / 2).coerceAtLeast(0.dp)
+        } else {
+            0.dp
+        }
+        content(sidePadding)
     }
 }
 

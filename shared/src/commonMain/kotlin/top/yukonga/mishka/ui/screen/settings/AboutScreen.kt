@@ -1,7 +1,6 @@
 package top.yukonga.mishka.ui.screen.settings
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -63,6 +62,7 @@ import top.yukonga.mishka.ui.component.blur.ColorBlendToken
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
 import top.yukonga.mishka.ui.component.blur.rememberBlurEnabled
 import top.yukonga.mishka.ui.component.effect.BgEffectBackground
+import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -182,7 +182,7 @@ private fun AboutContent(
 
     val backdrop = rememberLayerBackdrop()
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalAppDarkMode.current
     val blurEnabled by rememberBlurEnabled()
     val effectBackground = remember(blurEnabled) { isRuntimeShaderSupported() && blurEnabled }
 

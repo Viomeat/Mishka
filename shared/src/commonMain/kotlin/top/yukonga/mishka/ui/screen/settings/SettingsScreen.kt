@@ -37,14 +37,10 @@ import mishka.shared.generated.resources.settings_meta_summary
 import mishka.shared.generated.resources.settings_network
 import mishka.shared.generated.resources.settings_override_settings
 import mishka.shared.generated.resources.settings_override_summary
-import mishka.shared.generated.resources.settings_predictive_back
-import mishka.shared.generated.resources.settings_predictive_back_summary
 import mishka.shared.generated.resources.settings_subscription_via_proxy
 import mishka.shared.generated.resources.settings_subscription_via_proxy_summary
-import mishka.shared.generated.resources.settings_theme_dark
-import mishka.shared.generated.resources.settings_theme_light
-import mishka.shared.generated.resources.settings_theme_mode
-import mishka.shared.generated.resources.settings_theme_system
+import mishka.shared.generated.resources.settings_theme_summary
+import mishka.shared.generated.resources.settings_theme_title
 import mishka.shared.generated.resources.settings_title
 import mishka.shared.generated.resources.settings_tun_mode
 import mishka.shared.generated.resources.settings_tun_mode_root_tproxy
@@ -90,13 +86,11 @@ fun SettingsScreen(
     onNavigateExternalControl: () -> Unit = {},
     onNavigateAppProxy: () -> Unit = {},
     onNavigateWifiPolicy: () -> Unit = {},
+    onNavigateThemeSettings: () -> Unit = {},
     onNavigateFileManager: () -> Unit = {},
     onNavigateAbout: () -> Unit = {},
     bootStartManager: BootStartManager? = null,
-    colorMode: Int = 0,
-    onColorModeChange: (Int) -> Unit = {},
     storage: PlatformStorage? = null,
-    onPredictiveBackChange: ((Boolean) -> Unit)? = null,
     onHideTaskCardChange: ((Boolean) -> Unit)? = null,
     hasRootPermission: Boolean = false,
     isProxyRunning: Boolean = false,
@@ -104,9 +98,6 @@ fun SettingsScreen(
     val scrollBehavior = MiuixScrollBehavior()
     var isAutoStartEnabled by remember {
         mutableStateOf(bootStartManager?.isEnabled() ?: false)
-    }
-    var isPredictiveBackEnabled by remember {
-        mutableStateOf(storage?.getString(StorageKeys.PREDICTIVE_BACK, "false") == "true")
     }
     var isDynamicNotificationEnabled by remember {
         mutableStateOf(storage?.getString(StorageKeys.DYNAMIC_NOTIFICATION, "true") != "false")
@@ -127,10 +118,6 @@ fun SettingsScreen(
         )
     }
 
-    val themeSystemStr = stringResource(Res.string.settings_theme_system)
-    val themeLightStr = stringResource(Res.string.settings_theme_light)
-    val themeDarkStr = stringResource(Res.string.settings_theme_dark)
-    val themeItems = listOf(themeSystemStr, themeLightStr, themeDarkStr)
     val tunModeItems = listOf(
         stringResource(Res.string.settings_tun_mode_vpn),
         stringResource(Res.string.settings_tun_mode_root_tun),
@@ -323,36 +310,12 @@ fun SettingsScreen(
                             })
                         }
                         add(CardItem("theme") {
-                            OverlayDropdownPreference(
-                                title = stringResource(Res.string.settings_theme_mode),
-                                summary = themeItems.getOrElse(colorMode) { themeSystemStr },
-                                items = themeItems,
-                                selectedIndex = colorMode,
-                                onSelectedIndexChange = { index ->
-                                    onColorModeChange(index)
-                                    val value = when (index) {
-                                        1 -> "light"
-                                        2 -> "dark"
-                                        else -> "system"
-                                    }
-                                    storage?.putString(StorageKeys.DARK_MODE, value)
-                                },
+                            ArrowPreference(
+                                title = stringResource(Res.string.settings_theme_title),
+                                summary = stringResource(Res.string.settings_theme_summary),
+                                onClick = onNavigateThemeSettings,
                             )
                         })
-                        if (onPredictiveBackChange != null) {
-                            add(CardItem("predictiveBack") {
-                                SwitchPreference(
-                                    title = stringResource(Res.string.settings_predictive_back),
-                                    summary = stringResource(Res.string.settings_predictive_back_summary),
-                                    checked = isPredictiveBackEnabled,
-                                    onCheckedChange = { checked ->
-                                        storage?.putString(StorageKeys.PREDICTIVE_BACK, if (checked) "true" else "false")
-                                        isPredictiveBackEnabled = checked
-                                        onPredictiveBackChange(checked)
-                                    },
-                                )
-                            })
-                        }
                         add(CardItem("about") {
                             ArrowPreference(
                                 title = stringResource(Res.string.settings_about),

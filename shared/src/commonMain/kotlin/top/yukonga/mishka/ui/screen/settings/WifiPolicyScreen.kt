@@ -3,10 +3,12 @@ package top.yukonga.mishka.ui.screen.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -366,6 +368,7 @@ fun WifiPolicyScreen(
                     keyPrefix = "wifi_policy_ssids",
                     items = ssidCardItems,
                 )
+                item { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }
             }
         }
     }

@@ -4,19 +4,24 @@ import android.Manifest
 import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.g00fy2.quickie.QRResult
 import io.github.g00fy2.quickie.ScanCustomCode
@@ -38,6 +43,9 @@ import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.platform.WifiPolicyController
 import top.yukonga.mishka.service.AndroidProfileFileManager
 import top.yukonga.mishka.service.RootHelper
+import top.yukonga.mishka.ui.theme.ThemeConfig
+import top.yukonga.mishka.ui.theme.readThemeConfig
+import top.yukonga.mishka.ui.theme.resolveIsDark
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
 import top.yukonga.mishka.viewmodel.ConnectionViewModel
 import top.yukonga.mishka.viewmodel.DnsQueryViewModel
@@ -70,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var wifiPermissionLauncher: ActivityResultLauncher<Array<String>>
     private var qrResultCallback: ((String?) -> Unit)? = null
     private var wifiPermissionCallback: ((Boolean) -> Unit)? = null
+    private var latestThemeConfig: ThemeConfig? = null
     private val scannerConfig: ScannerConfig by lazy {
         ScannerConfig.build {
             setBarcodeFormats(listOf(BarcodeFormat.FORMAT_QR_CODE))
@@ -82,7 +91,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -125,6 +133,8 @@ class MainActivity : ComponentActivity() {
         }
 
         val storage = PlatformStorage(this)
+        val initialThemeConfig = readThemeConfig(storage)
+        updateEdgeToEdge(initialThemeConfig)
         val database = getAppDatabase(this)
         val fileManager = AndroidProfileFileManager(this)
         // 清理 processing/ 残留：经 ProfileProcessor 的进程级锁串行，避免擦掉后台 ProfileWorker
@@ -234,22 +244,19 @@ class MainActivity : ComponentActivity() {
             hasRootState.value = hasRoot
         }
 
-        val initialColorMode = when (storage.getString(StorageKeys.DARK_MODE, "system")) {
-            "light" -> 1
-            "dark" -> 2
-            else -> 0
-        }
-
         // 隐藏后台卡片：通过 excludeFromRecents 从最近任务中移除
         if (storage.getString(StorageKeys.HIDE_TASK_CARD, "false") == "true") {
             setExcludeFromRecents(true)
         }
 
         setContent {
-            var colorMode by remember { mutableIntStateOf(initialColorMode) }
+            var themeConfig by remember { mutableStateOf(initialThemeConfig) }
+            SideEffect {
+                updateEdgeToEdge(themeConfig)
+            }
             App(
-                colorMode = colorMode,
-                onColorModeChange = { colorMode = it },
+                themeConfig = themeConfig,
+                onThemeConfigChange = { themeConfig = it },
                 homeViewModel = homeViewModel,
                 subscriptionViewModel = subscriptionViewModel,
                 proxyViewModel = proxyViewModel,
@@ -276,7 +283,7 @@ class MainActivity : ComponentActivity() {
                 onPredictiveBackChange = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     { enabled ->
                         MishkaApplication.setEnableOnBackInvokedCallback(applicationInfo, enabled)
-                        recreate()
+                        recreateWithoutTransition()
                     }
                 } else null,
                 onHideTaskCardChange = { enabled ->
@@ -284,6 +291,61 @@ class MainActivity : ComponentActivity() {
                 },
             )
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) latestThemeConfig?.let(::updateEdgeToEdge)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // manifest configChanges=uiMode 吞掉了深浅色切换的重建，前台期间系统定时深色模式
+        // 翻转既无焦点变化也不触发 themeConfig SideEffect，只有这里能重新应用系统栏外观
+        latestThemeConfig?.let(::updateEdgeToEdge)
+    }
+
+    private fun updateEdgeToEdge(themeConfig: ThemeConfig) {
+        latestThemeConfig = themeConfig
+        val isDark = themeConfig.resolveIsDark(
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES,
+        )
+        val systemBarStyle = themeConfig.systemBarStyle()
+        enableEdgeToEdge(
+            statusBarStyle = systemBarStyle,
+            navigationBarStyle = systemBarStyle,
+        )
+        enforceSystemBarsAppearance(isDark)
+        window.decorView.post {
+            enforceSystemBarsAppearance(isDark)
+        }
+    }
+
+    private fun ThemeConfig.systemBarStyle(): SystemBarStyle = when (colorMode) {
+        1 -> SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        2 -> SystemBarStyle.dark(Color.TRANSPARENT)
+        else -> SystemBarStyle.auto(
+            lightScrim = Color.TRANSPARENT,
+            darkScrim = Color.TRANSPARENT,
+            detectDarkMode = { resources ->
+                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                    Configuration.UI_MODE_NIGHT_YES
+            },
+        )
+    }
+
+    private fun enforceSystemBarsAppearance(isDark: Boolean) {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !isDark
+            isAppearanceLightNavigationBars = !isDark
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun recreateWithoutTransition() {
+        overridePendingTransition(0, 0)
+        recreate()
+        overridePendingTransition(0, 0)
     }
 
     private fun requestWifiPolicyPermission(
@@ -300,6 +362,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        latestThemeConfig?.let(::updateEdgeToEdge)
         serviceController.verifyAndSyncState()
     }
 

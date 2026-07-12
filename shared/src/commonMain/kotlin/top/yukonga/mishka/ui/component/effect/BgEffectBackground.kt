@@ -2,7 +2,6 @@ package top.yukonga.mishka.ui.component.effect
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.floor
@@ -36,7 +36,7 @@ fun BgEffectBackground(
     ) {
         val surface = MiuixTheme.colorScheme.surface
         val deviceType = DeviceType.PHONE
-        val isDarkTheme = isSystemInDarkTheme()
+        val isDarkTheme = LocalAppDarkMode.current
         val painter = remember { BgEffectPainter() }
 
         val preset = remember(deviceType, isDarkTheme) {
