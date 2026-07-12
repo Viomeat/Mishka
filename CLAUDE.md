@@ -429,7 +429,7 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 - **页面骨架**：Scaffold + TopAppBar(scrollBehavior) + LazyColumn
   - LazyColumn 必须加 `.scrollEndHaptic().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection)`
   - `contentPadding = PaddingValues(top = innerPadding.calculateTopPadding())`——仅设 top，不设 bottom
-  - 首个 item（非 RestartRequiredHint）用 `item { Spacer(Modifier.height(12.dp)) }` 顶部呼吸
+  - 首个 item 是 Card / 表单时用 `item { Spacer(Modifier.height(12.dp)) }` 顶部呼吸；SmallTitle 或 RestartRequiredHint 开头**不加**（SmallTitle 自带 InsideMargin 上边距，再加 Spacer 会比其他页多出一截）
   - 末尾 item 统一 `item { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }` 吸收导航栏 + 留白
   - **二级页面（独立 NavDisplay entry）签名禁止 `bottomPadding: Dp` 参数**——靠 `Spacer(navigationBarsPadding())` 自适应即可
   - **4 个 Pager Tab 例外**（HomeScreen / ProxyScreen / SubscriptionScreen / SettingsScreen）：因外层 `MainPage` Scaffold 持有 `bottomBar`，必须接 `bottomPadding: Dp` 把 outer Scaffold 的 `innerPadding.calculateBottomPadding()` 透传给 LazyColumn `contentPadding`

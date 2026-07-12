@@ -200,7 +200,6 @@ fun ThemeSettingsScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(top = innerPadding.calculateTopPadding()),
         ) {
-            item { Spacer(Modifier.height(12.dp)) }
             item { SmallTitle(text = stringResource(Res.string.settings_theme_group_color)) }
             groupedCardItems(
                 keyPrefix = "theme_color",
