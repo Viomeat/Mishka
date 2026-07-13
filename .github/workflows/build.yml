@@ -30,7 +30,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           java-version: 21
-          distribution: temurin
+          distribution: zulu
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -41,24 +41,24 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Download GeoIP files
-        run: ./gradlew :app:android:downloadGeoFiles
+        run: ./gradlew :app:downloadGeoFiles
 
       - name: Build Debug APK
-        run: ./gradlew :app:android:assembleDebug
+        run: ./gradlew :app:assembleDebug
 
       - name: Build Release APK
-        run: ./gradlew :app:android:assembleRelease
+        run: ./gradlew :app:assembleRelease
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7
         with:
           name: Mishka-debug
-          path: app/android/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
           archive: false
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
           name: Mishka-release
-          path: app/android/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
           archive: false

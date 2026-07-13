@@ -1,0 +1,22 @@
+package top.yukonga.mishka.data.database
+
+import android.content.Context
+import androidx.room3.Room
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+
+@Volatile
+private var INSTANCE: AppDatabase? = null
+
+fun getAppDatabase(context: Context): AppDatabase {
+    return INSTANCE ?: synchronized(AppDatabase::class) {
+        INSTANCE ?: Room.databaseBuilder(
+            context.applicationContext,
+            AppDatabase::class.java,
+            context.getDatabasePath("mishka.db").absolutePath,
+        )
+            .setDriver(BundledSQLiteDriver())
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .build()
+            .also { INSTANCE = it }
+    }
+}

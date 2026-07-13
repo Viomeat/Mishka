@@ -33,8 +33,4 @@ dependencyResolutionManagement {
 
 includeBuild("scripta")
 
-include(":domain")
-include(":data")
-include(":app:shared")
-include(":app:android")
-include(":app:desktop")
+include(":app")
