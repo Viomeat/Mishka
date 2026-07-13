@@ -36,14 +36,13 @@ google-services.json
 *.hprof
 
 # Downloaded mihomo binaries
-android/src/main/jniLibs/
+app/android/src/main/jniLibs/
 
 # Downloaded GeoIP files
-android/src/main/assets/
+app/android/src/main/assets/
 
 # Local properties
 local.properties
 
 # AI
-/.serena
 /.claude

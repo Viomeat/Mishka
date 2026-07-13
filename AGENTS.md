@@ -24,7 +24,7 @@
 ## 验证
 
 - 每次改动至少运行 `git diff --check`，并执行与变更匹配的 Gradle 任务。
-- 共享 Kotlin/UI 变更优先运行 `./gradlew :shared:compileKotlinDesktop`；Android 变更至少运行 `./gradlew :android:assembleDebug`。需要真机验证时再执行 `./gradlew :android:installDebug`。
+- 模块：`:domain` / `:data` / `:app:shared` / `:app:android` / `:app:desktop`。common/data/domain 变更优先运行 `./gradlew :domain:compileKotlinDesktop :data:compileKotlinDesktop :app:shared:compileKotlinDesktop`（快，无 Go）；Android 平台 actual 变更运行 `./gradlew :data:compileAndroidMain :app:shared:compileAndroidMain`；涉及 native/打包时运行 `./gradlew :app:android:assembleDebug`。需要真机验证时再执行 `./gradlew :app:android:installDebug`。
 - 首次 clone 或更新含 native 变更的提交后，先执行 `git submodule update --init --recursive`。完整 APK 构建会触发 mihomo、Geo 文件和 CMake 任务。
 
 ## Git 与工作区

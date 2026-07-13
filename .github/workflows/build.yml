@@ -41,24 +41,24 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Download GeoIP files
-        run: ./gradlew :android:downloadGeoFiles
+        run: ./gradlew :app:android:downloadGeoFiles
 
       - name: Build Debug APK
-        run: ./gradlew :android:assembleDebug
+        run: ./gradlew :app:android:assembleDebug
 
       - name: Build Release APK
-        run: ./gradlew :android:assembleRelease
+        run: ./gradlew :app:android:assembleRelease
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7
         with:
           name: Mishka-debug
-          path: android/build/outputs/apk/debug/*.apk
+          path: app/android/build/outputs/apk/debug/*.apk
           archive: false
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
           name: Mishka-release
-          path: android/build/outputs/apk/release/*.apk
+          path: app/android/build/outputs/apk/release/*.apk
           archive: false

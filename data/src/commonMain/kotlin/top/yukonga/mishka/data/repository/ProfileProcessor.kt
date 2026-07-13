@@ -1,0 +1,183 @@
+package top.yukonga.mishka.data.repository
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import top.yukonga.mishka.data.bridge.CoreFetchProgress
+import top.yukonga.mishka.data.bridge.MishkaCoreBridge
+import top.yukonga.mishka.data.bridge.MishkaCoreError
+import top.yukonga.mishka.domain.model.ProfileType
+import top.yukonga.mishka.platform.ProfileFileManager
+
+/**
+ * 导入进度的语义步骤。本地化文案在 UI 层按 [ImportStep] 映射，
+ * data 层只发结构化进度，不依赖 Compose Resources。
+ */
+enum class ImportStep { Downloading, Prefetching, Validating, Other }
+
+data class ImportProgress(
+    val step: ImportStep,
+    /** FetchProviders 阶段正在预取的 provider 名，用于「更新 {name} ({i}/{n})」文案。 */
+    val providerName: String = "",
+    /** [ImportStep.Other] 时携带 mihomo 原始 action 字符串。 */
+    val rawLabel: String = "",
+    val current: Int = 0,
+    val total: Int = 0,
+)
+
+class ConfigValidationException(message: String) : Exception(message)
+
+/**
+ * snapshot → fetchAndValid → commit-swap 三阶段。
+ * processLock 串行整个流程，[SubscriptionRepository.profileLock] 守护 DB snapshot。
+ * commit 阶段必须 NonCancellable，否则文件 swap 完成 / DB 未更新会撕裂。
+ */
+class ProfileProcessor(
+    private val repo: SubscriptionRepositoryImpl,
+    private val fileManager: ProfileFileManager,
+    private val proxyResolver: SubscriptionProxyResolver,
+) {
+
+    suspend fun apply(uuid: String, onProgress: (ImportProgress) -> Unit = {}) {
+        runProcess(uuid, isUpdate = false, onProgress)
+    }
+
+    suspend fun update(uuid: String, onProgress: (ImportProgress) -> Unit = {}) {
+        runProcess(uuid, isUpdate = true, onProgress)
+    }
+
+    private suspend fun runProcess(
+        uuid: String,
+        isUpdate: Boolean,
+        onProgress: (ImportProgress) -> Unit,
+    ) = withContext(Dispatchers.Default) {
+        processLock.withLock {
+            val (snapshot, workDir) = repo.withProfileLock {
+                if (isUpdate) {
+                    val imported = repo.queryImported(uuid)
+                        ?: throw IllegalArgumentException("Profile $uuid not found")
+                    val snap = PendingSnapshot(
+                        imported.uuid, imported.name, imported.type, imported.source,
+                        imported.userAgent, imported.ageSecretKey, imported.interval,
+                    )
+                    val dir = fileManager.prepareProcessing(uuid)
+                    // File 类型需要保留旧 config.yaml 作基准；Url 类型会被 force=true 覆盖下载
+                    fileManager.readImportedFile(uuid, "config.yaml")?.let {
+                        fileManager.writeProcessingConfig(dir, it)
+                    }
+                    snap to dir
+                } else {
+                    val pending = repo.queryPending(uuid)
+                        ?: throw IllegalArgumentException("No pending profile for $uuid")
+                    pending.enforceFieldValid()
+                    val dir = fileManager.prepareProcessing(uuid)
+                    PendingSnapshot(
+                        pending.uuid, pending.name, pending.type, pending.source,
+                        pending.userAgent, pending.ageSecretKey, pending.interval,
+                    ) to dir
+                }
+            }
+
+            try {
+                val proxyUrl = if (snapshot.type == ProfileType.Url) proxyResolver.resolve() else null
+
+                val result = try {
+                    MishkaCoreBridge.fetchAndValid(
+                        workDir = workDir,
+                        url = if (snapshot.type == ProfileType.Url) snapshot.source else "",
+                        force = snapshot.type == ProfileType.Url,
+                        httpProxy = proxyUrl,
+                        userAgent = snapshot.userAgent,
+                        ageSecretKey = snapshot.ageSecretKey,
+                        onProgress = { p -> onProgress(mapProgress(p)) },
+                    )
+                } catch (e: MishkaCoreError) {
+                    // "validate config:" 前缀区分 Parse 失败 vs fetch / unmarshal 失败，UI 文案不同
+                    val msg = e.message ?: throw e
+                    if (msg.startsWith("validate config:")) {
+                        throw ConfigValidationException(msg.removePrefix("validate config:").trim())
+                    }
+                    throw e
+                }
+
+                withContext(NonCancellable) {
+                    repo.withProfileLock {
+                        if (isUpdate) {
+                            val current = repo.queryImported(uuid)
+                                ?: throw IllegalArgumentException("Imported profile $uuid disappeared during update")
+                            check(current.uuid == snapshot.uuid)
+                            fileManager.commitProcessingToImported(uuid)
+                            repo.updateImported(
+                                uuid = uuid,
+                                upload = result.upload,
+                                download = result.download,
+                                total = result.total,
+                                expire = result.expire,
+                            )
+                        } else {
+                            val currentPending = repo.queryPending(uuid)
+                                ?: throw IllegalArgumentException("Pending profile $uuid disappeared during commit")
+                            check(currentPending.uuid == snapshot.uuid)
+                            fileManager.commitProcessingToImported(uuid)
+                            repo.commitPending(
+                                uuid = uuid,
+                                upload = result.upload,
+                                download = result.download,
+                                total = result.total,
+                                expire = result.expire,
+                            )
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                withContext(NonCancellable) { fileManager.cleanupProcessing() }
+                throw t
+            }
+        }
+    }
+
+    private fun mapProgress(p: CoreFetchProgress): ImportProgress = when (p.action) {
+        "FetchConfiguration" -> ImportProgress(ImportStep.Downloading)
+        "FetchProviders" -> ImportProgress(
+            step = ImportStep.Prefetching,
+            providerName = p.args.firstOrNull().orEmpty(),
+            current = p.progress,
+            total = p.max,
+        )
+
+        "Verifying" -> ImportProgress(ImportStep.Validating)
+        else -> ImportProgress(ImportStep.Other, rawLabel = p.action)
+    }
+
+    companion object {
+        /**
+         * 进程级处理锁。processing/ 是进程内单例沙箱目录，但前台 SubscriptionViewModel 与后台
+         * ProfileWorker 各自构造独立的 ProfileProcessor 实例。锁若是实例级，两个实例的 update/apply
+         * 会并发清空并复用同一个 processing/：一个订阅下载的 config 被提交进另一个订阅的
+         * imported/{uuid}/，造成「界面显示订阅 A、实际运行订阅 B」。锁必须进程级共享，真正串行化
+         * 对 processing/ 的「清空 → 下载 → 提交」全过程。
+         */
+        private val processLock = Mutex()
+
+        /**
+         * 清理 processing/ 残留（应用启动时调用）。必须与 [runProcess] 持同一把进程级锁，否则会
+         * 擦掉后台 ProfileWorker 正在进行的更新写到 processing/ 的内容。
+         */
+        suspend fun cleanupResidual(fileManager: ProfileFileManager) = processLock.withLock {
+            fileManager.cleanupProcessing()
+        }
+    }
+}
+
+// 与 PendingEntity 解耦：update 路径下 Pending DB 记录不存在，但仍需带字段做 commit
+internal data class PendingSnapshot(
+    val uuid: String,
+    val name: String,
+    val type: ProfileType,
+    val source: String,
+    val userAgent: String,
+    val ageSecretKey: String,
+    val interval: Long,
+)
