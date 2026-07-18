@@ -98,6 +98,23 @@ class MihomoApiClient(
         }.body()
 
     /**
+     * 测试 proxy-provider 内单节点延迟。provider 节点不在 /proxies 命名空间，
+     * /proxies/{name}/delay 对其返回 404，必须走 provider 专属 healthcheck 端点。
+     */
+    suspend fun getProviderProxyDelay(
+        provider: String,
+        name: String,
+        testUrl: String = "http://www.gstatic.com/generate_204",
+        timeout: Int = 5000,
+    ): DelayResult =
+        client.get("$baseUrl/providers/proxies/$provider/$name/healthcheck") {
+            url {
+                parameters.append("url", testUrl)
+                parameters.append("timeout", timeout.toString())
+            }
+        }.body()
+
+    /**
      * 测试代理组内全部节点延迟（mihomo 并发执行，对任意 ProxyGroup 类型有效）。
      * 返回 Map<节点名, 延迟ms>；超时节点延迟为 0（mihomo 端约定，UI 侧映射为 -1 显示「超时」）。
      */

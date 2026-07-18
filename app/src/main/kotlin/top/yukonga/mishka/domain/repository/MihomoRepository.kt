@@ -39,6 +39,13 @@ interface MihomoRepository {
         timeout: Int = 5000,
     ): Result<DelayResult>
 
+    suspend fun getProviderProxyDelay(
+        provider: String,
+        name: String,
+        testUrl: String = "http://www.gstatic.com/generate_204",
+        timeout: Int = 5000,
+    ): Result<DelayResult>
+
     suspend fun testGroupDelay(
         groupName: String,
         testUrl: String = "http://www.gstatic.com/generate_204",

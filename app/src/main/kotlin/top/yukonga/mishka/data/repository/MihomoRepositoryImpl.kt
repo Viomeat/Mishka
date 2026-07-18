@@ -47,6 +47,14 @@ class MihomoRepositoryImpl(
     ): Result<DelayResult> =
         runCatching { apiClient.getProxyDelay(name, testUrl, timeout) }
 
+    override suspend fun getProviderProxyDelay(
+        provider: String,
+        name: String,
+        testUrl: String,
+        timeout: Int,
+    ): Result<DelayResult> =
+        runCatching { apiClient.getProviderProxyDelay(provider, name, testUrl, timeout) }
+
     override suspend fun testGroupDelay(
         groupName: String,
         testUrl: String,

@@ -62,6 +62,10 @@ class ProxyViewModel(
     // 晚于新 client 的写入，把刚切走的旧订阅代理组覆盖回来
     private var loadJob: Job? = null
 
+    // provider 节点名 → provider 名。/proxies 命名空间只含 runtime 节点，
+    // provider 节点的延迟测试必须路由到 /providers/proxies/{provider}/{node}/healthcheck
+    private var nodeProviderMap: Map<String, String> = emptyMap()
+
     fun updateSortOption(option: Int) {
         _sortOption.value = option
         storage?.putString(StorageKeys.PROXY_NODE_SORT_OPTION, option.toString())
@@ -76,6 +80,7 @@ class ProxyViewModel(
         if (repo != null) {
             loadProxies()
         } else {
+            nodeProviderMap = emptyMap()
             _uiState.value = ProxyUiState()
         }
     }
@@ -88,12 +93,26 @@ class ProxyViewModel(
         loadJob = viewModelScope.launch {
             val groupsResult = repo.getGroups()
             val proxiesResult = repo.getProxies()
+            val providersResult = repo.getProviders()
             // 协程被 cancel 后 HTTP 响应仍可能已读完，二次校验 repo identity 防止把旧 client
             // 的结果写到当前 repo 已切换后的 UI
             if (repository !== repo) return@launch
 
             groupsResult.onSuccess { groupsResponse ->
-                val allProxies = proxiesResult.getOrNull()?.proxies ?: emptyMap()
+                // /proxies 只含 runtime 节点（proxies: 段 + 代理组），proxy-provider 节点
+                // 的类型与延迟 history 要从 /providers/proxies 合并（runtime 优先补缺）
+                val runtimeProxies = proxiesResult.getOrNull()?.proxies ?: emptyMap()
+                val allProxies = runtimeProxies.toMutableMap()
+                val providerOf = mutableMapOf<String, String>()
+                providersResult.getOrNull()?.providers?.forEach { (providerName, provider) ->
+                    provider.proxies.forEach { node ->
+                        if (node.name !in runtimeProxies) {
+                            allProxies.putIfAbsent(node.name, node)
+                            providerOf.putIfAbsent(node.name, providerName)
+                        }
+                    }
+                }
+                nodeProviderMap = providerOf
 
                 val globalGroup = groupsResponse.proxies.firstOrNull { it.name == "GLOBAL" }
                 val orderMap = globalGroup?.all
@@ -190,9 +209,14 @@ class ProxyViewModel(
         )
 
         viewModelScope.launch {
-            // mihomo /proxies/{name}/delay 把结果写入全局 history.delay，
-            // loadProxies 再从 history 读回并分发到所有引用该节点的组，保证跨组延迟一致
-            repo.getProxyDelay(nodeName)
+            // 延迟结果写入节点全局 history.delay，loadProxies 再从 history 读回并分发到
+            // 所有引用该节点的组，保证跨组延迟一致；provider 节点走 provider healthcheck 端点
+            val provider = nodeProviderMap[nodeName]
+            if (provider != null) {
+                repo.getProviderProxyDelay(provider, nodeName)
+            } else {
+                repo.getProxyDelay(nodeName)
+            }
             if (repository !== repo) {
                 _uiState.value = _uiState.value.copy(
                     testingNodes = (_uiState.value.testingNodes - nodeName).toPersistentSet(),
