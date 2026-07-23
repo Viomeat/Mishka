@@ -6,7 +6,7 @@ import top.yukonga.mishka.R
 
 /**
  * 把运行时长（秒数）按 i18n 字符串资源格式化。负数 → 空串（视作"尚未启动"）。
- * 依赖 Compose Resources 的 `stringResource`，只能在 `@Composable` 上下文调用。
+ * 依赖 `stringResource`，只能在 `@Composable` 上下文调用。
  */
 @Composable
 fun formatUptime(seconds: Long): String {

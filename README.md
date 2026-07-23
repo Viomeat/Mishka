@@ -4,9 +4,9 @@
 
 **基于 [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) 和 [mihomo](https://github.com/MetaCubeX/mihomo) 的 Android 代理客户端**
 
-[![AGP](https://img.shields.io/badge/AGP-9.2.1-green?logo=gradle&logoColor=white)](https://developer.android.com/build)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![minSdk](https://img.shields.io/badge/minSdk-26-3DDC84?logo=android&logoColor=white)](#)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
 
 </div>
 
@@ -14,7 +14,7 @@
 
 ## 简介
 
-采用 [mihomo](https://github.com/MetaCubeX/mihomo)（Clash.Meta）内核的 Android 代理客户端，UI 使用 [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) + Jetpack Compose 构建。内核以子进程 + JNI 双通道集成，支持 **VPN**、**ROOT TUN**、**ROOT TPROXY** 三种隧道模式
+采用 [mihomo](https://github.com/MetaCubeX/mihomo)（Clash.Meta）内核的 Android 代理客户端，UI 使用 [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) + Jetpack Compose 构建，数据层 Room + Ktor + Koin。内核以子进程 + JNI 双通道集成，支持 **VPN**、**ROOT TUN**、**ROOT TPROXY** 三种隧道模式
 
 ## 特性
 
@@ -47,20 +47,12 @@
 - **Wi-Fi 自动切换** —— 匹配指定 SSID 时自动停止代理或切换 Direct 模式
 - 开机自启、隐藏最近任务卡片等实用开关
 
-## 技术栈
-
-- **语言**：kotlin
-- **界面**：compose + [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) + navigation3
-- **数据**：room 3 + ktor + kotlinx
-- **依赖注入**：koin
-- **内核**：[mihomo](https://github.com/MetaCubeX/mihomo)
-
 ## 构建
 
 ### 环境要求
 
 - JDK 21
-- Android SDK（compileSdk 37）+ NDK（含 clang）
+- Android SDK + NDK（含 clang），SDK 版本见 `buildSrc/ProjectConfig.kt`
 - Go（版本见 `mihomo/go.mod`）
 - Git（用于 submodule 与版本号生成）
 
@@ -96,4 +88,4 @@ git submodule update --init --recursive
 
 ## 许可证
 
-基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核开发，遵循相应开源许可证
+本项目以 [GPL-3.0](LICENSE) 许可证开源；与内核 [mihomo](https://github.com/MetaCubeX/mihomo) 一致

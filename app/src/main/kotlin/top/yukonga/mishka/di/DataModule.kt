@@ -13,9 +13,9 @@ import top.yukonga.mishka.data.repository.SubscriptionRepositoryImpl
 import top.yukonga.mishka.domain.repository.SubscriptionRepository
 
 /**
- * data 层 Koin 装配：平台无关的仓库 / 存储 / 处理器。
- * 平台相关单例（AppDatabase / PlatformStorage / 平台控制器）由各平台的 platform module 提供
- * （Android：`androidPlatformModule`）；ProfileFileManager 实现由 app 壳模块绑定。
+ * data 层 Koin 装配：仓库 / 存储 / 处理器。
+ * Android 单例（AppDatabase / PlatformStorage / 各控制器）由 `androidPlatformModule` 提供；
+ * ProfileFileManager 实现由 `androidAppModule` 绑定。
  */
 val dataModule = module {
     single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Default) }

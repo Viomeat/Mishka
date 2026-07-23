@@ -13,7 +13,7 @@ import top.yukonga.mishka.platform.ProfileFileManager
 
 /**
  * 导入进度的语义步骤。本地化文案在 UI 层按 [ImportStep] 映射，
- * data 层只发结构化进度，不依赖 Compose Resources。
+ * data 层只发结构化进度，不依赖字符串资源。
  */
 enum class ImportStep { Downloading, Prefetching, Validating, Other }
 

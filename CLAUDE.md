@@ -1,16 +1,14 @@
 # Mishka
 
-miuix + mihomo 纯 Android 代理客户端。**单模块 `:app`**（`com.android.application`，AGP 9 内置 Kotlin，无 KMP、无 `commonMain`/`androidMain`，全 `src/main`）。UI 用 AndroidX Compose（compose compiler 插件 + `androidx.compose.*`），miuix 走其 `-android` 发布件；`org.jetbrains.compose` 插件已彻底移除。
+miuix + mihomo 的 Android 代理客户端。**单模块 `:app`**（`com.android.application`，AGP 9 内置 Kotlin，源码全在 `src/main`）。UI 用 AndroidX Compose（compose compiler 插件 + `androidx.compose.*`），miuix 走其 `-android` 发布件。
 
 ## 技术栈
 
-Kotlin（AGP 9 内置，无独立 kotlin 插件）+ AGP + KSP。UI：AndroidX Compose（compose compiler 插件，运行时经 miuix `-android` 件传递）+ miuix（组件库 + 导航 + squircle + blur）+ androidx.navigation3（类型安全路由）+ material-icons-extended。数据：Room 3（KSP，反射 builder）+ Ktor（HTTP/WS）+ kotlinx-serialization/coroutines/datetime/collections-immutable + Koin（DI）。其他：quickie（扫码）、hiddenapibypass（预测性返回）。核心：mihomo（Mishka fork patch，见「关键约束」）。
+Kotlin（AGP 9 内置，不加独立 kotlin 插件）+ KSP。UI：AndroidX Compose（运行时经 miuix `-android` 件传递）+ miuix + navigation3 + material-icons-extended。数据：Room 3（反射 builder）+ Ktor + kotlinx-* + Koin。其他：quickie（扫码）、hiddenapibypass（预测性返回）。核心：mihomo（Mishka fork patch，见「关键约束」）。
 
-**版本与坐标唯一真源 = `gradle/libs.versions.toml`**（含 `[bundles]` 分组：koin/androidx-lifecycle/androidx-navigation/room/kotlinx/ktor/miuix），mihomo 版本在 `gradle.properties`，应用坐标/SDK 在 `buildSrc/ProjectConfig.kt`。**文档不复述版本号**（避免漂移）。`scripta:editor`（Compose Multiplatform 代码编辑器）经 `includeBuild("scripta")` 复合构建引入，其 KMP/compose-MP 插件由 scripta 自己的 `pluginManagement` 解析，Mishka 根 `build.gradle.kts` 无需声明。
+**版本与坐标唯一真源 = `gradle/libs.versions.toml`**（含 `[bundles]` 分组），mihomo 版本在 `gradle.properties`，应用坐标/SDK 在 `buildSrc/ProjectConfig.kt`；**文档不复述版本号**（避免漂移）。版本信息走 `BuildConfig.VERSION_NAME`/`VERSION_CODE`。`scripta:editor`（Compose Multiplatform 代码编辑器）经 `includeBuild("scripta")` 引入，其插件由 scripta 自己的 `pluginManagement` 解析，根 `build.gradle.kts` 无需声明。
 
-Compose 稳定性配置：[app/compose_compiler_config.conf](app/compose_compiler_config.conf) 列出 kotlinx.coroutines Flow/Mutex/Semaphore、kotlinx.serialization.Json、Ktor HttpClient/WebSocket session、AndroidX ViewModel/RoomDatabase、`top.yukonga.mishka.domain.model.*`（数据模型无 `@Immutable`，靠通配声明 stable）、以及 Mishka 自身长生命周期容器为 stable；由 [app/build.gradle.kts](app/build.gradle.kts) 的 `composeCompiler.stabilityConfigurationFiles` 加载。新增推断 unstable 的三方/平台字段时优先加进该文件，而非散落 `@Stable` 注解。
-
-版本信息走 **`BuildConfig`**（`buildFeatures.buildConfig = true`，`BuildConfig.VERSION_NAME`/`VERSION_CODE` 由 `defaultConfig` 自动填充），不再有生成 `misc/VersionInfo.kt` 的自定义 Gradle 任务。
+Compose 稳定性走 [app/compose_compiler_config.conf](app/compose_compiler_config.conf)（把 kotlinx/Ktor/AndroidX 长生命周期容器与 `domain.model.*` 通配声明 stable，数据模型不加 `@Immutable`）。**新增推断 unstable 的三方/平台字段时优先加进该文件**，而非散落 `@Stable` 注解。
 
 ## 项目结构
 
@@ -18,44 +16,24 @@ Compose 稳定性配置：[app/compose_compiler_config.conf](app/compose_compile
 
 ```
 Mishka/
-├── buildSrc/                         ProjectConfig + GoBuildTask（mihomo/JNI 通用 Go 交叉编译）
-├── mihomo/                           git submodule（YuKongA/mihomo branch Mishka，5 patch 见关键约束）
-├── scripta/                          includeBuild 复合构建：Compose Multiplatform 代码编辑器（YAML 编辑），app 依赖 `scripta:editor`
-├── app/
-│   ├── build.gradle.kts              com.android.application + composeCompiler + kotlinSerialization + ksp + room3
-│   ├── compose_compiler_config.conf
-│   ├── schemas/                      Room 导出 schema（v1→v2→v3）
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       ├── kotlin/.../mishka/
-│       │   ├── App.kt                根组件 + 主题配置
-│       │   ├── MainActivity.kt       应用入口（Koin get 取图 + Activity 作用域 FilePicker/launcher）
-│       │   ├── MishkaApplication.kt  startKoin + 全局初始化（GeoIP 提取 + MishkaCoreBridge.init + 预测性返回 + root 迁移）
-│       │   ├── domain/
-│       │   │   ├── model/            @Serializable 数据模型 + ProfileType enum + ConfigurationOverride（无 @Immutable，靠 stability config）
-│       │   │   └── repository/       MihomoRepository + SubscriptionRepository 接口
-│       │   ├── data/
-│       │   │   ├── api/              MihomoApiClient（REST）+ MihomoWebSocket（流）+ MihomoConnectionManager（全 app 单例）
-│       │   │   ├── bridge/           MishkaCoreBridge（订阅导入 JNI 门面 object + CoreFetchProgress / CoreFetchResult / MishkaCoreError / AgeKeyPair）
-│       │   │   ├── database/         Room 3.0（AppDatabase + 3 Entity + 3 DAO + ProfileTypeConverter，反射 builder，无 @ConstructedBy）
-│       │   │   └── repository/       MihomoRepositoryImpl + SubscriptionRepositoryImpl + ProfileProcessor（3 阶段，发 ImportStep 结构化进度）+ OverrideJsonStore + SubscriptionProxyResolver
-│       │   ├── platform/             PlatformStorage/Context/SystemInfo + ProxyServiceController + AppListProvider + BootStartManager + FilePicker + WifiPolicyController + Toast + ProfileFileManager 接口 + ProxyServiceBridge（普通 android 类，无 expect/actual）
-│       │   ├── service/              服务组件（含 ROOT 模式 + RuntimeOverrideBuilder + MihomoRunner + AndroidProfileFileManager）
-│       │   ├── ui/
-│       │   │   ├── navigation/       AppNavigation（主导航树 + HorizontalPager）
-│       │   │   ├── navigation3/      Route + Navigator（自定义栈）
-│       │   │   ├── component/        SearchBar + GroupedCardItems + AdaptiveTopAppBar + animation/ blur/ effect/ liquid/ ...
-│       │   │   ├── platform/         AppIcon + IconLoader + IconDiskCache（Compose ImageBitmap，包 ui.platform，与 data 层 platform 包分开）
-│       │   │   ├── theme/            StatusColors（语义色 token）
-│       │   │   └── screen/           页面（home/ proxy/ subscription/ settings/ log/ provider/ dns/ connection/）
-│       │   ├── viewmodel/            ViewModel
-│       │   ├── util/                 FormatUtils + ThrowableExt + WindowSize + AppIconCache
-│       │   └── di/                   DataModule + AndroidPlatformModule + AndroidAppModule + ViewModelModule（4 个 Koin 模块）
-│       ├── res/                      values/ + values-zh-rCN/ strings.xml（全部 UI 字符串，R.string）+ drawable（app_logo 等）+ mipmap + xml
-│       ├── assets/                   GeoIP（构建时下载）+ third_party/ 许可
-│       ├── cpp/                      process_helper.c + mishka_jni.c + mihomo_wrapper.c + CMakeLists.txt
-│       ├── jniLibs/arm64-v8a/        libmihomo.so（统一 cgo c-shared）
-│       └── native/mishka_core/       Go cgo c-shared 源（go.mod replace mihomo → ../../../../../mihomo）
+├── buildSrc/                  ProjectConfig（应用坐标/SDK）+ GoBuildTask（Go 交叉编译）
+├── mihomo/                    git submodule（YuKongA/mihomo branch Mishka，5 patch 见关键约束）
+├── scripta/                   includeBuild 复合构建代码编辑器（YAML 编辑），app 依赖 `scripta:editor`
+└── app/                       build.gradle.kts + compose_compiler_config.conf + schemas/（Room schema）
+    └── src/main/
+        ├── kotlin/.../mishka/
+        │   ├── App.kt / MainActivity.kt / MishkaApplication.kt（startKoin + 全局初始化）
+        │   ├── domain/        model（@Serializable 数据模型）+ repository（仓库接口）
+        │   ├── data/          api（REST/WS 客户端 + MihomoConnectionManager）+ bridge（MishkaCoreBridge JNI 门面）+ database（Room）+ repository（*Impl + ProfileProcessor + OverrideJsonStore + SubscriptionProxyResolver）
+        │   ├── platform/      数据/服务类（见「platform / ui.platform 包」）
+        │   ├── service/       服务组件（见「Android 服务层」）
+        │   ├── ui/            navigation/ navigation3/ component/ platform/ theme/ screen/
+        │   └── viewmodel/ + util/ + di/（4 个 Koin 模块）
+        ├── res/               values/ + values-zh-rCN/（全部 UI 字符串）+ drawable + mipmap + xml
+        ├── assets/            GeoIP（构建时下载）
+        ├── cpp/               process_helper.c + mishka_jni.c + mihomo_wrapper.c + CMakeLists.txt
+        ├── jniLibs/arm64-v8a/ libmihomo.so（统一 cgo c-shared）
+        └── native/mishka_core/  Go cgo c-shared 源（go.mod replace mihomo → 仓库根 mihomo/）
 ```
 
 ## 架构
@@ -79,7 +57,7 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
 - `dataModule`：appScope（CoroutineScope 单例）、DAO（从 AppDatabase）、OverrideJsonStore、SubscriptionProxyResolver、MihomoConnectionManager、`SubscriptionRepositoryImpl` + `single<SubscriptionRepository>{ get<SubscriptionRepositoryImpl>() }` 接口绑定、`factory { ProfileProcessor }`
 - `androidPlatformModule`（`androidContext()` 绑定 app Context）：AppDatabase、PlatformStorage、ProxyServiceController、AppListProvider、WifiPolicyController、BootStartManager
 - `androidAppModule`：`single<ProfileFileManager>{ AndroidProfileFileManager }`（实现属服务层）
-- `viewModelModule`：11 个 ViewModel（单 Activity，用 `single`）；HomeViewModel/ProxyViewModel 的 getActive lambda 从 `get<SubscriptionRepository>()` 派生；**SubscriptionViewModel 注入 `androidContext()`**（`context.getString(R.string.x)` 解析错误文案，原 KMP 时代靠 Compose Resources `getString` 无需 context）
+- `viewModelModule`：11 个 ViewModel（单 Activity，用 `single`）；HomeViewModel/ProxyViewModel 的 getActive lambda 从 `get<SubscriptionRepository>()` 派生；**SubscriptionViewModel 注入 `androidContext()`**（`context.getString(R.string.x)` 解析错误文案）
 - **组合根注入**：VM/服务图由 Koin 管理，MainActivity 用 `org.koin.android.ext.android.get()` 在组合根取图后透传给 `App(...)`（App 签名保持全参数化默认值，屏幕仍参数化、不用 koinViewModel）；仅需 Activity 上下文的 FilePicker / VPN 授权 launcher 由 MainActivity 直接持有，不入 Koin
 - **repo 实现必配接口**：`data.repository.*Impl` 对应 `domain.repository.*` 接口；ViewModel/组合根依赖接口，`ProfileProcessor`（需实体级方法）依赖 `SubscriptionRepositoryImpl` 具体类。OverrideJsonStore/SubscriptionProxyResolver/ProfileProcessor 为 use-case/service（非 Repository），保留具体类但 Koin 注入
 
@@ -87,7 +65,7 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
 
 - **通信方案**：runtime（traffic / logs / connections / proxy select / provider 刷新）走 subprocess + Ktor REST + WebSocket，三模式共用；订阅导入（fetch + provider prefetch + Parse）走 JNI in-process，由 [MishkaCoreBridge](app/src/main/kotlin/top/yukonga/mishka/data/bridge/MishkaCoreBridge.kt) 调 libmihomo.so 的 cgo 导出
 - **统一 .so 架构**：[libmihomo.so](app/src/main/native/mishka_core/)（cgo c-shared，~56MB）同时承担 JNI 导出 + `mihomoEntry(argc, argv)` runtime 入口；[libmihomo_runner.so](app/src/main/cpp/mihomo_wrapper.c)（C PIE，~6KB）由 MihomoRunner fork+exec 后 dlopen libmihomo.so 调 mihomoEntry。一份 mihomo 代码两条路径共用
-- **mihomo 客户端共享**：`MihomoConnectionManager`（Koin `dataModule` 里的 `single`，用 dataModule 的 application 级 `CoroutineScope`；`MishkaApplication.connectionManager` 经 `by inject()` 暴露给服务层）订阅 `ProxyServiceBridge.state`，`Running` 时构造新 `MihomoRepositoryImpl`，其他状态置 null；切换前同步 close 旧实例，杜绝 Ktor `HttpClient` 泄漏。所有消费方（5 个 ViewModel + `DynamicNotificationManager`）只 collect `connectionManager.repository: StateFlow<MihomoRepository?>`
+- **mihomo 客户端共享**：`MihomoConnectionManager`（Koin `dataModule` 里的 `single`，用 dataModule 的 application 级 `CoroutineScope`；`MishkaApplication.connectionManager` 经 `by inject()` 暴露给服务层）订阅 `ProxyServiceBridge.state`，`Running` 时构造新 `MihomoRepositoryImpl`，其他状态置 null；切换前同步 close 旧实例，杜绝 Ktor `HttpClient` 泄漏。消费方一律经 `connectionManager.repository: StateFlow<MihomoRepository?>` 取用：HomeViewModel 构造注入 connectionManager 自行 collect；MainActivity collect 后 `setRepository` 转发给 Proxy/Log/Provider/Connection/DnsQuery 五个 VM；`DynamicNotificationManager` 直接 collect
 - **MishkaCoreBridge**：`init(homeDir, userAgent)` 在 `MishkaApplication.onCreate` 一次性调用，homeDir 指向共享 GeoIP 目录 `files/mihomo/geodata/`；`fetchAndValid` 内部分 token、150ms 轮询进度、取消时调 `nativeCancel` 让 Go ctx 进入 Done
 - **导航**：miuix NavDisplay + 自定义 Navigator（push/pop/popUntil + navigateForResult）+ LocalNavigator；back stack 持久化走 Route sealed 多态序列化（`NavBackStackSaver`），新增路由只需 `@Serializable` 即自动获得进程死亡恢复；**`sealed interface Route` 自身必须保留 `@Serializable`**——缺失编译通过但运行时 `SerializationException`
 - **深色判定单点**：`ThemeConfig.resolveIsDark(systemDark)` 是 colorMode→isDark 的唯一实现（App.kt 与 MainActivity 系统栏共用），组合树内一律读 `LocalAppDarkMode.current`；**屏幕/组件禁止直接 `isSystemInDarkTheme()`**，否则用户强制深/浅色时该处不跟随（AboutScreen OS3 背景 / YAML 编辑器配色曾因此混色）。主题枚举的用户可见名走 [ThemeLabels.kt](app/src/main/kotlin/top/yukonga/mishka/ui/theme/ThemeLabels.kt) 共享 label()，设置入口摘要与主题页禁止各自 when 映射。`LocalAppMonetEnabled` 标记 Monet 开关：StatusColors 仅 Running 态跟随动态取色（secondaryContainer/primary），Pending/Stopped 警示黄/红固定不随壁纸漂移。底栏毛玻璃无独立开关，跟随全局 `blurEnabled`
@@ -106,12 +84,12 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
   - 关闭功能时恢复被策略改动的代理状态（pending 补启动 / 清 runtime override 重载）。Wi-Fi 监控通知与切换事件通知使用独立 channel；切换通知可关闭，隐藏监控前台通知为可选项且会降低后台自动恢复可靠性。开机 / 包替换后 `WifiPolicyBootReceiver`（默认 disabled，随功能开关动态启用）恢复监控。
 - **状态桥接**：ProxyServiceBridge（全局 StateFlow + TunMode），Service 写入、ViewModel 读取
 - **进程模型**：单进程（VpnService 和 UI 同进程），ROOT 模式 mihomo 为独立 root 进程
-- **数据持久化**：Room 3.0 KMP（结构化数据）+ PlatformStorage（简单偏好）+ StorageKeys（key 常量）+ OverrideJsonStore（`override.user.json` + ConfigurationOverride `@Serializable`）；store 自带 `state: StateFlow<ConfigurationOverride>` + `update(transform)`，Settings 三个切片 VM 共享同一实例
+- **数据持久化**：Room 3（结构化数据）+ PlatformStorage（简单偏好）+ StorageKeys（key 常量）+ OverrideJsonStore（`override.user.json` + ConfigurationOverride `@Serializable`）；store 自带 `state: StateFlow<ConfigurationOverride>` + `update(transform)`，Settings 三个切片 VM 共享同一实例
 - **订阅管理**：Pending → Processing → Imported 三阶段沙箱，`ProfileProcessor` 编排 snapshot → fetchAndValid（JNI 一次完成 fetch + provider prefetch + Parse 校验） → commit；processLock 串行，profileLock 守护 DB 一致性
 - **订阅 HTTP**：mihomo `component/http.HttpRequest`（in-process，cgo），60s context timeout；UA 默认 `ClashMetaForAndroid/{version}`（订阅服务白名单），用户可在订阅 Add/Edit 页面填自定义 UA 持久化到 `ImportedEntity.userAgent` / `PendingEntity.userAgent`，pipeline 经 PendingSnapshot 透传到 `MishkaCoreBridge.fetchAndValid` → JNI → Go `runFetchAndValid` 内 `effectiveUA = trim(userAgent) ?: currentUserAgent()`；非 2xx / 空 body → `MishkaCoreError`；不做 base64/V2Ray 转换，原始 YAML 直接交 mihomo
 - **age 加密订阅**：per-profile `ageSecretKey`（DB v3）随 pipeline 经 `PendingSnapshot` 透传到 `MishkaCoreBridge.fetchAndValid(ageSecretKey)`。**加密原样落盘，运行时解密**（对齐 CMFA）：
-  - **导入校验**：Android actual 在 native fetch 前 `nativeSetAgeSecretKey(key)`、fetch 后清空（processLock 串行保证全局密钥不串）；Go `runFetchAndValid` 里 `config.UnmarshalRawConfig`/`ParseRawConfig` 用该全局密钥**在内存中**解密校验，**config.yaml 与 provider 文件保持加密落盘**（fetch.go 不重写明文）。
-  - **运行时解密**：`MihomoTunService`/`MishkaRootService` 启动前从 DB 读 active 订阅 `ageSecretKey`，经 `MihomoRunner.start(ageSecretKey)` 加 `--age-secret-key` CLI flag（与 `--secret`/`--ext-ctl` 同渠道）；`runtime.go` 注册该 flag 并在 `hub.Parse` 前 `age.SetGlobalSecretKeys`，mihomo 加载时解密。ROOT attach 路径进程已带密钥，不重传。
+  - **导入校验**：Kotlin 侧在 native fetch 前 `nativeSetAgeSecretKey(key)`、fetch 后清空（processLock 串行保证全局密钥不串）；Go `runFetchAndValid` 里 `config.UnmarshalRawConfig`/`ParseRawConfig` 用该全局密钥**在内存中**解密校验，**config.yaml 与 provider 文件保持加密落盘**（fetch.go 不重写明文）。
+  - **运行时解密**：`MishkaTunService`/`MishkaRootService` 启动前从 DB 读 active 订阅 `ageSecretKey`，经 `MihomoRunner.start(ageSecretKey)` 加 `--age-secret-key` CLI flag（与 `--secret`/`--ext-ctl` 同渠道）；`runtime.go` 注册该 flag 并在 `hub.Parse` 前 `age.SetGlobalSecretKeys`，mihomo 加载时解密。ROOT attach 路径进程已带密钥，不重传。
   - **副作用**：加密订阅的 config 对 app 不透明，`ConfigGenerator.readSubscriptionSecret`/`readSubscriptionMixedPort` 行扫描扫不到内容 → 退回默认值（仅影响加密订阅的 secret/mixed-port 推导，加密本身固有限制）。per-provider `age-secret-key` 字段的 provider 由 mihomo 运行时按字段解密。
   - **密钥生成**：Meta 设置「生成密钥对」(X25519) / 「生成抗量子密钥对」(mlkem768-x25519) → `mishkaGenAgeKeyPair` / `mishkaGenAgeHybridKeyPair`（mihomo `age.GenX25519KeyPair` / `GenHybridKeyPair`）→ `MishkaCoreBridge.generateAgeKeyPair(hybrid): AgeKeyPair`
 - **订阅下载走代理**：`SubscriptionProxyResolver` 按「开关 + 代理运行中 + 可解析 mixed-port」返回 proxy URL 或 null；`ProfileProcessor` resolve 后传 `httpProxy` 给 bridge；native glue 在 fetchAndValid 入口 `os.Setenv("HTTPS_PROXY"/"HTTP_PROXY")` defer Unsetenv，覆盖订阅 fetch + provider prefetch + GeoIP 自动下载（mihomo `downloadToPath` 用 Go stdlib `http.Get` 读 env）。processLock 串行保证 set/unset 并发安全。无代理时直连，由 mihomo 内部 90s timeout 兜底。`resolve(requireUserToggle)` 参数控制是否受该开关约束：订阅下载传 true；图标等通用资源下载传 false（只要代理运行就走本机代理）
@@ -119,9 +97,9 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
 - **Pipeline 可取消**：协程 cancel → `nativeCancel(token)` → Go ctx Done → native 立即返回 "context canceled"；`ImportProgressDialog` 可选 `onCancel`；`cancelCurrentUpdate` 先同步 `clearProgress()` 让 UI 立即响应，再 cancel 协程
 - **GeoIP 预制**：构建时 DownloadGeoFilesTask 下载 geoip.metadb/geosite.dat/ASN.mmdb 到 assets，启动时提取到 `files/mihomo/geodata/`。JNI 路径用 `mishkaCoreInit(geodataDir)` 把 mihomo 全局 homeDir 指到这里；subprocess runtime 仍按 `-d workDir` + symlink 复用同一份 GeoIP
 - **配置校验**：JNI in-process `MishkaCoreBridge.fetchAndValid` 调用 mihomo `config.ParseRawConfig`，含 GEOIP/GEOSITE/IP-ASN 规则时触发数据库 init（缺失则走代理下载到 geodata/）
-- **国际化**：英文 + 中文（zh-rCN），Compose Resources `stringResource()` + Android `getString()`；日志消息英文，代码注释中文
+- **国际化**：英文 + 中文（zh-rCN），Composable 内 `stringResource(R.string.x)`、非 Composable `context.getString(R.string.x)`；日志消息英文，代码注释中文
 
-## 数据库架构（Room 3.0 KMP）
+## 数据库架构（Room 3）
 
 ### 三表结构
 
@@ -228,25 +206,28 @@ files/mihomo/
 | SubscriptionAddScreen    | —                     | 添加方式选择（文件/URL/QR Code）                                |
 | SubscriptionAddUrlScreen | SubscriptionViewModel | URL 导入订阅                                                    |
 
-## 平台服务类
+## platform / ui.platform 包
 
-普通 android 类（无 expect/actual），集中在 `platform` 包（数据/服务抽象）与 `ui.platform` 包（Compose 平台助手）：
+`platform` 包放数据/服务类，`ui.platform` 包放 Compose 相关助手：
 
 | 类/函数                       | 类型        | 实现                                  |
 | ----------------------------- | ----------- | ------------------------------------- |
 | PlatformContext               | typealias   | = android `Context`                   |
 | PlatformStorage               | class       | SharedPreferences                     |
 | PlatformSystemInfo            | class       | ConnectivityManager + /proc           |
-| ProxyServiceController        | class       | Intent 启停 VPN                       |
+| ProxyServiceController        | class       | 按 TunMode 组装 Intent 启停 Tun/Root Service |
 | AppListProvider               | class       | PackageManager                        |
 | BootStartManager              | class       | BroadcastReceiver                     |
 | FilePicker                    | class       | SAF                                   |
 | AppIcon                       | @Composable | BitmapFactory                         |
 | IconDiskCache                 | object      | 磁盘缓存                              |
 | WifiPolicyController          | class       | Wi-Fi 权限 / 当前 SSID / 监控服务启停 |
+| ProxyServiceBridge            | object      | 全局代理状态 StateFlow（ProxyServiceState.kt） |
+| ProfileFileManager            | interface   | 订阅目录抽象（实现在服务层）          |
+| scanTetherInterfacesAsRoot    | fun         | NetworkInterface 扫描热点接口候选（TetherInterfaceScanner.kt） |
 | showToast / initToastPlatform | fun         | android.widget.Toast（主线程派发）    |
 
-`platform` 包放数据/服务类；`ui.platform` 包放 Compose 相关平台助手（AppIcon / IconLoader / IconDiskCache 图像三件套 + `Clipboard.setPlainText/getPlainText` 剪贴板读写——Compose suspend `Clipboard` 需平台构造 `ClipEntry`，实现走 Android `ClipData`）。
+`ui.platform` 含 AppIcon / IconLoader / IconDiskCache 图像三件套 + `Clipboard.setPlainText/getPlainText` 剪贴板读写（Compose suspend `Clipboard` 需构造 `ClipEntry`，实现走 Android `ClipData`）。
 
 ## Android 服务层
 
@@ -256,9 +237,9 @@ files/mihomo/
 | MishkaRootService          | ROOT 模式前台服务（ROOT TUN + ROOT TPROXY 两 submode 共享；EXTRA_SUBMODE 分支）                                                                                                                      |
 | RootTproxyApplier          | ROOT TPROXY 规则装配（mangle/nat chains + fwmark ip rule + local default dev lo，iptables + uid-owner 分应用）                                                                                       |
 | RootHelper                 | root 检测/启动/终止/存活检查/残留清理 + rmRfAsRoot + chownRecursiveAsRoot + runAsRootReturnCode                                                                                                      |
-| RootTetherHijacker         | ROOT 模式热点流量处置（ip rule 导向 main/TUN 表，绕过代理或走代理）                                                                                                                                  |
+| RootTetherHijacker         | ROOT 模式热点流量处置（BYPASS：ip rule `goto` sing-tun nop 绕过代理 / PROXY：TPROXY 走代理，详见关键约束）                                                                                           |
 | DynamicNotificationManager | 动态通知（订阅 `MishkaApplication.connectionManager.repository` 的 traffic 流，不持有自己的 HttpClient），两个 Service 共用                                                                          |
-| MishkaTileService          | Quick Settings Tile 一键启停代理（双模式路由）                                                                                                                                                       |
+| MishkaTileService          | Quick Settings Tile 一键启停代理（经 ProxyServiceController）                                                                                                                                        |
 | BootReceiver               | 开机自启（默认 disabled，动态启用）                                                                                                                                                                  |
 | WifiPolicyMonitorService   | Wi-Fi 自动切换前台监控服务（NetworkCallback + 当前 SSID 匹配；停止服务 / Direct runtime mode + 统一重载）                                                                                            |
 | WifiPolicyBootReceiver     | 开机 / 包替换后拉起监控服务（默认 disabled，随功能开关动态启用）                                                                                                                                     |
@@ -267,11 +248,13 @@ files/mihomo/
 | ProfileFileOps             | 订阅目录管理（imported/pending/processing/runtime + GeoIP + ROOT 沙箱）                                                                                                                              |
 | AndroidProfileFileManager  | ProfileFileManager 接口的 Android 实现                                                                                                                                                               |
 | MihomoRunner               | mihomo runtime 进程管理（VPN: JNI fork+exec / ROOT: su）                                                                                                                                             |
-| MishkaCoreBridge           | 订阅导入 JNI 门面：libmishka_jni.so（C 桥）+ libmishka_core.so（cgo c-shared，含 mihomo）；fetch + provider prefetch + Parse 一次完成                                                                |
+| MishkaCoreBridge           | 订阅导入 JNI 门面：libmishka_jni.so（C 桥）+ libmihomo.so（cgo c-shared 统一库，含 mihomo）；fetch + provider prefetch + Parse 一次完成                                                              |
 | ProcessHelper              | JNI 包装（nativeForkExec/nativeKill/nativeWaitpid，仅 runtime 用）                                                                                                                                   |
 | NotificationHelper         | 三层通知渠道（VPN/更新进度/更新结果）                                                                                                                                                                |
 | ProfileReceiver            | AlarmManager 调度自动更新                                                                                                                                                                            |
 | ProfileWorker              | 前台服务执行后台配置更新                                                                                                                                                                             |
+| VpnPermissionActivity      | 透明跳板 Activity：Tile / 通知等无 Activity 上下文的 VPN 授权（见关键约束「启动校验单点」）                                                                                                          |
+| IptablesIntranet           | 私网/组播/保留段 CIDR 常量（V4/V6），ROOT TUN route-exclude 与 ROOT TPROXY RETURN 共用                                                                                                               |
 
 ## 数据模型
 
@@ -283,7 +266,7 @@ ConnectionInfo, DelayResult, DnsQuery, LogMessage, MemoryData, MihomoConfig, Pro
 
 ## 构建命令
 
-mihomo 通过 git submodule 引入 Mishka fork（`mihomo/`，branch `Mishka`）。Gradle 自动驱动两条 Go 构建任务，产物落到 `app/src/main/jniLibs/<ABI>/`：
+mihomo 通过 git submodule 引入 Mishka fork（`mihomo/`，branch `Mishka`）。Gradle 按 ABI 自动驱动 Go 构建任务（当前仅 arm64-v8a），产物落到 `app/src/main/jniLibs/<ABI>/`：
 
 ```bash
 # 首次 clone 后或拉新 commit 后同步 submodule
@@ -297,7 +280,7 @@ git submodule update --init --recursive
 ./gradlew :app:compileDebugKotlin -x buildMihomo_arm64_v8a
 ```
 
-单模块 `:app`。改 Kotlin 优先用 `:app:compileDebugKotlin -x buildMihomo_arm64_v8a` 快速验证（跳过 Go cgo）；只有验证 native/打包才跑完整 `:app:assembleDebug`（Go cgo ~分钟级）。`scripta` 复合构建首次 fresh config 时若报插件解析错，见「技术栈」节根 plugins 声明说明。
+单模块 `:app`。改 Kotlin 优先用 `:app:compileDebugKotlin -x buildMihomo_arm64_v8a` 快速验证（跳过 Go cgo）；只有验证 native/打包才跑完整 `:app:assembleDebug`（Go cgo ~分钟级）。`scripta` 复合构建首次 fresh config 时若报插件解析错，见「技术栈」节 scripta 复合构建说明（其插件由 scripta 自己的 `pluginManagement` 解析）。
 
 Go 构建任务（[GoBuildTask](buildSrc/src/main/kotlin/GoBuildTask.kt)）：
 
@@ -316,7 +299,7 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 
 **启动校验单点**：所有"启动代理"路径必须经过 [ProxyServiceController.start / restart](app/src/main/kotlin/top/yukonga/mishka/platform/ProxyServiceController.kt)。`resolveStartSubscriptionId()` 统一校验 active 订阅 + `imported/{uuid}/config.yaml` 落盘，失败时一次完成：toast 提示用户、`ProxyServiceBridge.updateState(Error)`、清 `SERVICE_WAS_RUNNING`、在 Running 时发 STOP 让状态自洽。`HomeUiState.errorMessage` 当前未在 UI 展示，因此 Toast 必要。新增入口（Wear OS / shortcut / 自动化）严禁绕过 controller 直接 `startService(MishkaTunService/MishkaRootService)`；Service 内 `ProfileFileOps.hasValidConfig` 是兜底防御层，针对 ADB / 第三方 Intent 直拉 Service。Tile / 通知等无 Activity 上下文要在 VPN 模式启动时弹系统授权对话框，必须经 [VpnPermissionActivity](app/src/main/kotlin/top/yukonga/mishka/service/VpnPermissionActivity.kt) 透明跳板（`VpnService.prepare()` 要求 Activity context，TileService 不是 Activity）；UI 路径仍走 MainActivity 自身处理。错误文案直接 `context.getString(R.string.error_no_active_profile)`（单模块，R 类同包可直接引用）。
 
-**Ktor HttpClient 所有权**：禁止任何模块直接 `MihomoApiClient(...)` / `MihomoWebSocket(...)`；统一从 `MishkaApplication.instance.connectionManager.repository: StateFlow<MihomoRepository?>` 订阅。`MihomoConnectionManager` 是唯一持有 `close()` 责任的方，按 `ProxyServiceBridge.state` 自动 connect/disconnect、原子 close 旧 + new 新——不做 endpoint 比对（attach 重连多一次重建 < 50ms，胜过状态机比对出 race 的代价）。新增消费方仅 collect repository 即可；ViewModel 的 `setRepository(repo)` 仅做信号传递，不承担 close 责任。例外：`SubscriptionProxyResolver` 因 mixed-port 探测场景独立于 mihomo 实时连接，可自建短生命周期 HttpClient，但必须 `client.use{}` 或 try/finally close。订阅 fetch 自身已 in-process 化（[MishkaCoreBridge.fetchAndValid](app/src/main/kotlin/top/yukonga/mishka/data/bridge/MishkaCoreBridge.kt)），不再用 Ktor。
+**Ktor HttpClient 所有权**：禁止任何模块直接 `MihomoApiClient(...)` / `MihomoWebSocket(...)`；统一从 `MishkaApplication.instance.connectionManager.repository: StateFlow<MihomoRepository?>` 订阅。`MihomoConnectionManager` 是唯一持有 `close()` 责任的方，按 `ProxyServiceBridge.state` 自动 connect/disconnect、原子 close 旧 + new 新——不做 endpoint 比对（attach 重连多一次重建 < 50ms，胜过状态机比对出 race 的代价）。新增消费方仅 collect repository 即可；ViewModel 的 `setRepository(repo)` 仅做信号传递，不承担 close 责任。例外：`SubscriptionProxyResolver` 因 mixed-port 探测场景独立于 mihomo 实时连接，可自建短生命周期 HttpClient，但必须 `client.use{}` 或 try/finally close。订阅 fetch 走 JNI in-process（[MishkaCoreBridge.fetchAndValid](app/src/main/kotlin/top/yukonga/mishka/data/bridge/MishkaCoreBridge.kt)），不经 Ktor。
 
 **ViewModel `setRepository` 必须 cancel 旧拉取协程**：mihomo 重启 / 切换订阅时 `MihomoConnectionManager` 会 close 旧 client 并 emit 新 repo，消费方 ViewModel 的 `setRepository(repo)` 必须先 `loadJob?.cancel()` 再切字段；HTTP 一次性拉取协程（getProxies / getProviders 等）启动时把 `viewModelScope.launch { ... }` 赋给 `loadJob`，进入协程后用 `if (repository !== repo) return@launch` 双保险——Ktor `client.close()` 让 in-flight 请求抛异常**但不会取消协程**，旧响应的 onSuccess 仍可能跑到末尾把 `_uiState` 写成旧订阅的数据，覆盖新 client 已经写入的新订阅数据。流式 Flow（trafficFlow / logsFlow / connectionsFlow）天然随 client.close 终止 collect，但仍需 `Job?.cancel()` 保证下一次新建不重叠。[ProxyViewModel](app/src/main/kotlin/top/yukonga/mishka/viewmodel/ProxyViewModel.kt) / [ProviderViewModel](app/src/main/kotlin/top/yukonga/mishka/viewmodel/ProviderViewModel.kt) / [LogViewModel](app/src/main/kotlin/top/yukonga/mishka/viewmodel/LogViewModel.kt) / [ConnectionViewModel](app/src/main/kotlin/top/yukonga/mishka/viewmodel/ConnectionViewModel.kt) 均按此模式。**为什么必要**：切换订阅后用户在 ProxyScreen 看到旧订阅代理组的回归就是这条 race——`setActive` 同步写已正确（commit 901b3c4），下游 ViewModel 协程没 cancel 才是漏洞。
 
@@ -416,44 +399,46 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 
 ## UI 规范
 
-- 所有 UI 组件使用 miuix（Card、TopAppBar、NavigationBar、SmallTitle、TextButton 等）；miuix 组件（Card/Button/IconButton/TextField/NavigationBar/Dialog…）内部已用 squircle 渲染圆角，直接用即可，无需处理
-- **自定义形状元素用 squircle modifier**：非 miuix 组件的手搓形状不要用 `.clip(RoundedCornerShape(r))` / `background(shape = RoundedCornerShape(r))`，改用 `top.yukonga.miuix.kmp.squircle.*`（随 `miuix-ui` 经 `api` 传递，无需单独加依赖；Android < API 33 / 无 runtime shader 自动回退 `RoundedCornerShape`）。按性能选路径：
-  - **非点击纯色背景**（徽章 / 占位块，内容不溢出）→ `Modifier.squircleBackground(color, radius)`（无 offscreen layer，最省，**不要 clip**）
-  - **图片 / 必须裁剪的内容**（如组图标 Image）→ `Modifier.squircleClip(radius)`（一个 offscreen layer）
-  - **可点击元素**（需把涟漪裁到圆角内）→ `Modifier.squircleSurface(color, radius)` + `.clickable{}`（一个 offscreen layer 同时填充 + 裁剪；条件可点击时按 `isSelectable` 分支退化为 `squircleBackground`）
-  - **3dp 小徽章保持 `clip(RoundedCornerShape(3.dp))`**：该尺寸下 squircle 与圆角肉眼无差异，且每元素多一个 GPU layer 不划算
+- 所有 UI 组件使用 miuix；其组件内部已用 squircle 渲染圆角，直接用即可
+- **自定义形状元素用 squircle modifier**：非 miuix 组件的手搓形状不用 `RoundedCornerShape` 的 clip/background，改用 `top.yukonga.miuix.kmp.squircle.*`（随 miuix-ui 传递；低版本/无 runtime shader 自动回退圆角）。按性能选：
+  - **非点击纯色背景**（内容不溢出）→ `squircleBackground(color, radius)`：无 offscreen layer，**不要 clip**
+  - **图片 / 必须裁剪的内容** → `squircleClip(radius)`：一个 offscreen layer
+  - **可点击元素**（涟漪裁进圆角）→ `squircleSurface(color, radius)` + `.clickable{}`；条件可点击时按 `isSelectable` 退化为 `squircleBackground`
+  - **3dp 小徽章保持 `clip(RoundedCornerShape(3.dp))`**：该尺寸肉眼无差异，不值多一个 GPU layer
 - 返回按钮使用 MiuixIcons.Back
 - 底栏图标：Sidebar / Tune / UploadCloud / Settings
 - Badge：`clip(RoundedCornerShape(3.dp))` + 9.sp Bold Monospace
 - 操作 IconButton：`minHeight/minWidth = 35.dp, backgroundColor = secondaryContainer`
 - **页面骨架**：Scaffold + TopAppBar(scrollBehavior) + LazyColumn
   - LazyColumn 必须加 `.scrollEndHaptic().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection)`
-  - `contentPadding = PaddingValues(top = innerPadding.calculateTopPadding())`——仅设 top，不设 bottom
-  - 首个 item 是 Card / 表单时用 `item { Spacer(Modifier.height(12.dp)) }` 顶部呼吸；SmallTitle 或 RestartRequiredHint 开头**不加**（SmallTitle 自带 InsideMargin 上边距，再加 Spacer 会比其他页多出一截）
-  - 末尾 item 统一 `item { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }` 吸收导航栏 + 留白
-  - **二级页面（独立 NavDisplay entry）签名禁止 `bottomPadding: Dp` 参数**——靠 `Spacer(navigationBarsPadding())` 自适应即可
-  - **4 个 Pager Tab 例外**（HomeScreen / ProxyScreen / SubscriptionScreen / SettingsScreen）：因外层 `MainPage` Scaffold 持有 `bottomBar`，必须接 `bottomPadding: Dp` 把 outer Scaffold 的 `innerPadding.calculateBottomPadding()` 透传给 LazyColumn `contentPadding`
-- **顶栏 / 底栏毛玻璃**：所有页面 Scaffold 必须用 `BlurredBar` 包裹 `TopAppBar` / `NavigationBar`；MainPage 外层 Scaffold + 每个二级页面各自一份 backdrop（嵌套 layerBackdrop 是 OK 的，layer 抓取相互独立）。模式：
-  - 顶层取 `val backdrop = rememberBlurBackdrop()` + `val blurActive = backdrop != null` + `val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface`
-  - `topBar = { BlurredBar(backdrop, blurActive) { TopAppBar(... color = barColor ...) } }` / `bottomBar = { BlurredBar(backdrop, blurActive) { NavigationBar(color = barColor) {...} } }`
-  - 内容区 LazyColumn modifier 链中追加 `.then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)` —— 让 backdrop 抓取内容 layer 给 TopAppBar/NavigationBar 的 textureBlur 用
-  - 含搜索动画的页面（AppProxyScreen / ConnectionScreen）：在 BlurredBar 内套 `searchStatus.TopAppBarAnim(backgroundColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface) { TopAppBar(...) }`，让搜索切换时不挡住毛玻璃
-- **宽屏适配**：窗口宽度 ≥ 600dp（`WideScreenMinWidth`，`rememberIsWideScreen()`，[WindowSize.kt](app/src/main/kotlin/top/yukonga/mishka/ui/util/WindowSize.kt)；用缩放前 `LocalPlatformDensity` 量宽，界面缩放不翻转外壳）时：
-  - **导航**：[MainPage](app/src/main/kotlin/top/yukonga/mishka/ui/navigation/AppNavigation.kt) 把底部 `NavigationBar` 换成侧边 `NavigationRail`（**可展开收起**——传 `state = rememberNavigationRailState()`，默认收起，顶部有内置 Sidebar 展开钮，展开后 item 变 icon+label 横排 pill）；手机与宽屏共用同一 `pagerContent: (Modifier, Dp) -> Unit` lambda。Home Tab 图标用 `MiuixIcons.Home`（底栏与 rail 同步；不用 `Sidebar`，避免与 rail 展开钮的 Sidebar 图标撞脸）。inset：rail（`defaultWindowInsetsPadding=true`）吸收起始侧 cutout/navBar，内容区 `consumeWindowInsets(...Start)` + `windowInsetsPadding(systemBars∪displayCutout .only(End))` 处理末尾侧，底部经 `bottomPadding = navigationBars.asPaddingValues().calculateBottomPadding()` 透传给各 Tab
-  - **顶栏**：所有用 `TopAppBar` 的页面（19 个）改走 [AdaptiveTopAppBar](app/src/main/kotlin/top/yukonga/mishka/ui/component/AdaptiveTopAppBar.kt)——宽屏用固定不折叠的 `SmallTopAppBar`（rail 取代底栏后纵向空间紧张）、手机用大标题 `TopAppBar`；参数面覆盖 title/color/scrollBehavior/navigationIcon/actions/bottomContent。**AboutScreen 例外**：其 hero 视差本就固定用 `SmallTopAppBar`，不套 Adaptive（否则手机端会多出与 hero 重复的大标题）。搜索页（AppProxy/Connection）保留 `searchStatus.TopAppBarAnim { AdaptiveTopAppBar(...) }` 包裹；其搜索框动态 top padding 在宽屏（固定 `SmallTopAppBar` 永不折叠、`collapsedFraction` 恒 0）时**恒为 0**（`if (isWideScreen) 0.dp else 12.dp * (1f - collapsedFraction)`），仅手机可折叠大标题栏才随折叠动态收缩
-  - **内容居中**：4 个主 Tab 的 LazyColumn 用 `WideContentBox { sidePadding -> LazyColumn(...) }` 包裹（内部 `BoxWithConstraints` 按内容区实际宽度算出单侧留白 `sidePadding`）；**LazyColumn 保持全宽**（滚动手势覆盖整屏、两侧无死区），仅把 `sidePadding` 加进其 `contentPadding` 的 `start/end` 把内容居中到 `MaxContentWidth=800dp`（内容上限与 600dp 外壳阈值是两个独立常量）。**是否居中复用 `rememberIsWideScreen()` 判定**（外壳是唯一权威）——`WideContentBox` 自己在缩放后 `LocalDensity` 下量宽，若独立比较阈值，densityScale≠1 时会出现「手机外壳+内容内缩」或「rail 外壳+不居中」。二级页宽屏仍全宽；手机路径留白为 0、行为完全不变。**不要**改回压缩 LazyColumn 节点宽度的 layout modifier——那会让 600 外侧区域无法接收滚动手势（死区）
-  - **横屏屏幕缺口**：miuix `Scaffold` 不自动 padding 内容、只经 `innerPadding` 提供 inset，二级页 `contentPadding` 又只吃 `top` → 横屏侧边刘海 / 挖孔 / 手势条下内容会压到缺口里。**每个二级页内容根 LazyColumn** 加 `Modifier.horizontalCutoutPadding()`（[WindowSize.kt](app/src/main/kotlin/top/yukonga/mishka/ui/util/WindowSize.kt)，只补水平 `displayCutout ∪ navigationBars` inset，竖屏 / 无侧边缺口为 0），紧跟在 `.fillMaxSize()` 后。顶栏由 `TopAppBar` 自身 `defaultWindowInsetsPadding=true` 处理，两者不重叠。**AboutScreen 相反**：其 `SmallTopAppBar(defaultWindowInsetsPadding=false)`（hero 视差不吃顶部 inset），内容侧已用 `Scaffold.contentWindowInsets.only(Horizontal)` + `calculateStart/EndPadding` 处理缺口，故只需给它的 `SmallTopAppBar` 加 `Modifier.horizontalCutoutPadding()` 补顶栏。4 个主 Tab 内容居中到 600dp、天然在缺口内侧，无需此项
+  - `contentPadding` 仅设 top（`innerPadding.calculateTopPadding()`），不设 bottom
+  - 首个 item 是 Card / 表单时加 `item { Spacer(Modifier.height(12.dp)) }`；SmallTitle / RestartRequiredHint 开头**不加**（SmallTitle 自带上边距）
+  - 末尾统一 `item { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }`
+  - **二级页面签名禁止 `bottomPadding: Dp` 参数**——靠上述末尾 Spacer 自适应
+  - **4 个 Pager Tab 例外**（Home/Proxy/Subscription/Settings）：外层 `MainPage` Scaffold 持有 `bottomBar`，必须接 `bottomPadding: Dp` 透传 outer `innerPadding.calculateBottomPadding()` 给 `contentPadding`
+- **顶栏 / 底栏毛玻璃**：所有页面 Scaffold 用 `BlurredBar` 包裹 `TopAppBar` / `NavigationBar`；MainPage 与每个二级页各自一份 backdrop（嵌套 layerBackdrop OK，抓取相互独立）。模式：
+  - 顶层 `val backdrop = rememberBlurBackdrop()`、`blurActive = backdrop != null`、bar 色 `if (blurActive) Color.Transparent else colorScheme.surface`
+  - `topBar/bottomBar = { BlurredBar(backdrop, blurActive) { TopAppBar/NavigationBar(color = barColor) } }`
+  - 内容区 LazyColumn 追加 `.then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)` 供 textureBlur 抓取
+  - 搜索页（AppProxy/Connection）：BlurredBar 内套 `searchStatus.TopAppBarAnim(backgroundColor = 同 bar 色) { ... }`，搜索切换不挡毛玻璃
+- **宽屏适配**：窗口宽 ≥ 600dp（`WideScreenMinWidth`，`rememberIsWideScreen()`，[WindowSize.kt](app/src/main/kotlin/top/yukonga/mishka/ui/util/WindowSize.kt)；用缩放前 `LocalPlatformDensity` 量宽，界面缩放不翻转外壳）时：
+  - **导航**：[MainPage](app/src/main/kotlin/top/yukonga/mishka/ui/navigation/AppNavigation.kt) 把底部 `NavigationBar` 换成可展开收起的侧边 `NavigationRail`（`rememberNavigationRailState()`，默认收起）；手机/宽屏共用同一 `pagerContent` lambda。Home Tab 图标用 `MiuixIcons.Home`（不用 `Sidebar`，避免与 rail 展开钮撞脸）。inset：rail 吸收起始侧（`defaultWindowInsetsPadding=true`），内容区 `consumeWindowInsets(Start)` + `windowInsetsPadding(systemBars∪displayCutout .only(End))`，底部经 `bottomPadding` 透传各 Tab
+  - **顶栏**：所有 `TopAppBar` 页面走 [AdaptiveTopAppBar](app/src/main/kotlin/top/yukonga/mishka/ui/component/AdaptiveTopAppBar.kt)——宽屏固定不折叠 `SmallTopAppBar`（纵向空间紧张）、手机大标题 `TopAppBar`。**AboutScreen 例外**（hero 视差固定 `SmallTopAppBar`，不套，否则手机端多出重复大标题）。搜索页保留 `searchStatus.TopAppBarAnim { AdaptiveTopAppBar(...) }`；其搜索框动态 top padding 宽屏**恒为 0**（`if (isWideScreen) 0.dp else 12.dp * (1f - collapsedFraction)`）
+  - **内容居中**：4 个主 Tab 用 `WideContentBox { sidePadding -> LazyColumn(...) }`；**LazyColumn 保持全宽**（两侧无滚动死区），仅把 `sidePadding` 加进 `contentPadding` 的 start/end 把内容居中到 `MaxContentWidth=800dp`（与 600dp 外壳阈值是两个独立常量）。**是否居中复用 `rememberIsWideScreen()`**（外壳唯一权威）——独立比较阈值会在 densityScale≠1 时出现外壳与居中不一致。二级页宽屏仍全宽；手机路径行为不变。**不要**改回压缩 LazyColumn 节点宽度的 layout modifier（滚动死区）
+  - **横屏屏幕缺口**：miuix `Scaffold` 不自动 padding 内容，二级页 `contentPadding` 只吃 top → 横屏侧边刘海/手势条会压到内容。**每个二级页根 LazyColumn** 在 `.fillMaxSize()` 后加 `Modifier.horizontalCutoutPadding()`（只补水平 `displayCutout ∪ navigationBars`，竖屏为 0）；顶栏由 `TopAppBar` 自身 inset 处理，不重叠。**AboutScreen 相反**：内容侧已自行处理缺口，只给其 `SmallTopAppBar(defaultWindowInsetsPadding=false)` 加该 modifier。4 个主 Tab 内容居中在缺口内侧，无需此项
 - **Card 间距**：水平 12.dp，每项统一 `padding(horizontal = 12.dp).padding(bottom = 12.dp)`；不使用 `Arrangement.spacedBy`
-- **多组件卡片拆为独立 lazy item（滚动性能）**：`LazyColumn` 里禁止 `item { Card { rowA(); rowB(); rowC() } }` 这种"单 item 塞整卡多行"的反模式——它让整卡内容一次性组合，卡片高/行多时（settings 大卡、代理组数百节点展开）滚动/展开卡顿。改用 [GroupedCardItems](app/src/main/kotlin/top/yukonga/mishka/ui/component/GroupedCardItems.kt)：`groupedCardItems(keyPrefix, items = listOf(CardItem("k") { row() }, ...))` 把每行拆成独立 item，靠 `CardSegment` 分角拼回一张视觉连续的 miuix 风格卡片，LazyColumn 只组合可见段。**分角背景选路**：有圆角的首/末段用 `squircleSurface`（fill+clip，一个 offscreen layer）——必须 clip，否则段内 clickable 内容（preference 涟漪 / 组头点击）的方角涟漪会溢出圆角，与 miuix `Card` 用 squircleSurface 同因；中间段无圆角纯 `background`（无 offscreen layer，最省）。语义对齐 miuix `Card`（surfaceContainer 底 + onSurfaceContainer 内容色 + 16.dp 圆角 + insideMargin 默认 0，preference 自带内边距故段 `insidePadding=0`）。`outerBottomPadding` 按所替换 Card 的 `.padding(bottom=…)` 传（6/12/0）；条件行用 `buildList { if (…) add(CardItem…) }`。`groupedCardItems` **不加 item 动画**（保持原静态 Card 无动画行为、拆分对用户不可见的纯性能优化）；需要展开/收起动画的自行在 item 内用 `Modifier.animateItem(...)`。**settings 各屏幕、DnsQueryScreen 结果、ProxyScreen 节点网格均已按此重构**；ProxyScreen 额外把展开状态从 item 内 `rememberSaveable` 上提到屏幕级 `SnapshotStateList`（节点行是顶层 lazy item、随展开动态增删，存于 item 内会随 item 销毁丢失），组头段 + 每行 ≤2 节点段拼一张卡，排序/分行在 LazyColumn 内容 lambda 完成，组头段与节点行段都用 `Modifier.animateItem()`（默认 fade + placement spring）——展开时节点行淡入、下方各组平滑下滑，替代原 `AnimatedVisibility(expandVertically)`（节点多时一次性组合整组才是卡顿源，拆 lazy 后组合快、动画交 animateItem）。**placement spec 不能设 null**，否则下方各组硬跳、展开无动画感。组头段底角随展开在 `16.dp↔0.dp` 间 `animateDpAsState(tween(300))`（经 `CardSegment.bottomCornerRadius` 覆写 isFirst/isLast 推导值），与 chevron 旋转 / 节点行淡入同步——否则 `isLast` 随 `rows` 翻转会让组头底角瞬间圆↔方突变。**不适用**：纯静态文本卡（ExternalControl 提示卡、RootSettings 警告卡）与带视差 + `textureBlur` 的 AboutScreen——保持单 `item { Card }`（其内容 Column 用 `heightIn(min = lazyListState.layoutInfo.viewportSize.height.toDp())` 而非固定 `fillParentMaxHeight()`——后者把 Column 钉死为恰好一个视口高，横屏矮视口下超出一屏的卡片会被裁掉且无法滚动露出；`heightIn(min=…)` 保证「至少一屏」的同时允许内容更高时增长）
+- **多组件卡片拆为独立 lazy item（滚动性能）**：`LazyColumn` 里禁止 `item { Card { 多行 } }`——整卡一次性组合，行多时（settings 大卡、代理组数百节点）滚动/展开卡顿。改用 [GroupedCardItems](app/src/main/kotlin/top/yukonga/mishka/ui/component/GroupedCardItems.kt)：`groupedCardItems(keyPrefix, items = listOf(CardItem("k") { row() }, ...))` 每行独立 item，`CardSegment` 分角拼回视觉连续的 miuix 卡片，只组合可见段。settings 各屏、DnsQueryScreen 结果、ProxyScreen 节点网格已按此重构。要点：
+  - **分角背景**：有圆角的首/末段 `squircleSurface`（fill+clip，**必须 clip**——否则段内 clickable 的方角涟漪溢出圆角）；中间段纯 `background`（无 offscreen layer 最省）。语义对齐 miuix `Card`（surfaceContainer + onSurfaceContainer + 16.dp 圆角；preference 自带内边距故段 `insidePadding=0`）
+  - `outerBottomPadding` 按所替换 Card 的 bottom padding 传（6/12/0）；条件行用 `buildList { if (…) add(CardItem…) }`
+  - `groupedCardItems` **不加 item 动画**（拆分是不可见的纯性能优化）；需要动画自行在 item 内 `Modifier.animateItem(...)`，**placement spec 不能设 null**——否则下方各组硬跳、无展开感
+  - **ProxyScreen 特例**：展开状态从 item 内 `rememberSaveable` 上提到屏幕级 `SnapshotStateList`（节点行是顶层 lazy item，随展开动态增删，存 item 内会随销毁丢失）；组头段 + 每行 ≤2 节点段拼卡，排序/分行在内容 lambda 完成；组头与节点行都用 `Modifier.animateItem()` 替代 `AnimatedVisibility(expandVertically)`（一次性组合整组才是卡顿源）；组头底角随展开 `16.dp↔0.dp` 走 `animateDpAsState(tween(300))` 经 `CardSegment.bottomCornerRadius` 覆写——否则随 `isLast` 翻转瞬间圆↔方突变
+  - **不适用**：纯静态文本卡（ExternalControl 提示卡、RootSettings 警告卡）与视差 + `textureBlur` 的 AboutScreen 保持单 `item { Card }`；AboutScreen 内容 Column 用 `heightIn(min = 视口高)` 而非 `fillParentMaxHeight()`——后者钉死恰好一屏，横屏矮视口下超出内容被裁且无法滚动
 - **TextField 表单**：不包 Card，直接 `padding(horizontal = 12.dp).padding(bottom = 12.dp)`
 - **Edit Dialog 按钮顺序**：`not_modified | cancel | confirm`（三按钮 weight(1f) + `spacedBy(8.dp)`），confirm 用 `ButtonDefaults.textButtonColorsPrimary()`
-- **长内容 Dialog 滚动 + 按钮固定底部**：miuix `WindowDialog` 在手机上对 content `Column` **不设 max-height**（`heightIn(max = Unspecified)`），内容过长会铺满屏幕把底部按钮顶出可视区。需把内容包进 `Column(Modifier.heightIn(max = 500.dp))` 限高，内部可滚动区用 `Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())`（`fill = false` 让短内容自然收缩、长内容才撑满到上限后滚动），按钮作为非加权子项放在滚动区之后固定在底部（同 KernelSU `ChooseKmiDialog` 范式）。范例：[MetaSettingsScreen](app/src/main/kotlin/top/yukonga/mishka/ui/screen/settings/MetaSettingsScreen.kt) 的 Age 密钥对结果 Dialog
+- **长内容 Dialog 滚动 + 按钮固定底部**：miuix `WindowDialog` 手机上不限 content 高度，过长会把底部按钮顶出屏。包 `Column(Modifier.heightIn(max = 500.dp))` 限高，滚动区 `Modifier.weight(1f, fill = false).verticalScroll(...)`（短内容自然收缩），按钮作为非加权子项固定底部。范例：[MetaSettingsScreen](app/src/main/kotlin/top/yukonga/mishka/ui/screen/settings/MetaSettingsScreen.kt) 的 Age 密钥对 Dialog
 - **用户反馈**：`platform.showToast(message, long = false)`——轻量操作结果提示
-- **i18n**：所有用户字符串走 `stringResource(R.string.xxx)`（Composable 内）或 `context.getString(R.string.xxx)`（非 Composable，需 Context），禁止硬编码。用 Android 原生资源，`import top.yukonga.mishka.R`
-  - 新增字符串同时加到 `app/src/main/res/values/strings.xml` + `res/values-zh-rCN/strings.xml`
-  - key 命名：`{页面}_{描述}`，通用按钮 `common_` 前缀
-  - 日志消息英文，代码注释中文
-- **语义色 token**：状态色（运行中 / 等待 / 失败）、延迟色（优 / 可 / 差 / 未测）、按钮色（restart / stop / reload）、错误文案色，统一走 `top.yukonga.mishka.ui.theme.StatusColors`（`runState` / `delay` / `actionButton` / `danger` / `healthy` / `warning` / `neutral` / `selectedNodeContainer`）。**禁止在屏幕里散落 `Color(0xFF...)`**；仅 `MiuixTheme.colorScheme.*` 已有的 token 与 `StatusColors` 是合法颜色源
-- **Flow 收集**：所有屏幕用 `androidx.lifecycle.compose.collectAsStateWithLifecycle()`（`lifecycle-runtime-compose`），不用 `androidx.compose.runtime.collectAsState`；后台时上游不再驱动 UI 重组
-- **强跳过友好的状态形状**：UiState `data class` 必须 `@Immutable`；含跨节点变化的大集合字段（节点列表、连接列表、组列表）一律用 `kotlinx.collections.immutable.ImmutableList` / `ImmutableMap`（构造时 `.toPersistentList()` / `.toPersistentMap()`），避免 SSM 下重组每次都做结构性 `equals` 走 List/Map 全表
-- **可复用组件 API**：`ui/component/*` 的可复用 composable 必须暴露 `modifier: Modifier = Modifier` 作为第一可选参，并应用到 root-most 节点；带表单 / 控件的 wrapper 透传到底层 miuix 组件（`ArrowPreference` / `OverlayDropdownPreference` / `Card` 等都接受 modifier）
+- **i18n**：所有用户字符串走 `stringResource(R.string.xxx)`（Composable）/ `context.getString(R.string.xxx)`（非 Composable），禁止硬编码；新增同时加 `res/values` + `res/values-zh-rCN`。key 命名 `{页面}_{描述}`，通用按钮 `common_` 前缀。日志消息英文，代码注释中文
+- **语义色 token**：状态/延迟/按钮/错误色统一走 `ui.theme.StatusColors`（`runState`/`delay`/`actionButton`/`danger`/`healthy`/`warning`/`neutral`/`selectedNodeContainer`）。**禁止屏幕里散落 `Color(0xFF...)`**；合法颜色源仅 `MiuixTheme.colorScheme.*` 与 `StatusColors`
+- **Flow 收集**：所有屏幕用 `collectAsStateWithLifecycle()`（`lifecycle-runtime-compose`），不用 compose runtime 的 `collectAsState`——后台时上游不再驱动重组
+- **强跳过友好的状态形状**：UiState `data class` 必须 `@Immutable`；大集合字段（节点/连接/组列表）一律 `ImmutableList`/`ImmutableMap`（`.toPersistentList()`/`.toPersistentMap()`），避免 SSM 重组做全表结构性 `equals`
+- **可复用组件 API**：`ui/component/*` 可复用 composable 第一可选参必须是 `modifier: Modifier = Modifier` 并应用到 root-most 节点；wrapper 透传到底层 miuix 组件

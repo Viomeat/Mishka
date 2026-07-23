@@ -8,7 +8,7 @@ import top.yukonga.mishka.data.repository.ImportStep
 
 /**
  * 把 data 层的结构化 [ImportProgress] 映射为本地化文案。
- * 本地化归 UI 层：data 只发 [ImportStep] 语义步骤，不依赖 Compose Resources。
+ * 本地化归 UI 层：data 只发 [ImportStep] 语义步骤，不依赖字符串资源。
  */
 @Composable
 fun importStepLabel(p: ImportProgress): String = when (p.step) {
