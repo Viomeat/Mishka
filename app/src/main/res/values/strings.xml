@@ -46,6 +46,9 @@
     <string name="qr_invalid_subscription">Not a valid subscription link</string>
     <string name="qr_unsupported">Unsupported QR code</string>
 
+    <!-- Deep Link Import -->
+    <string name="deep_link_invalid">Invalid subscription import link</string>
+
     <!-- Service Errors -->
     <string name="error_vpn_failed">VPN establishment failed: %1$s</string>
     <string name="error_vpn_denied">VPN permission denied</string>

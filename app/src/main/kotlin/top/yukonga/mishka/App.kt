@@ -62,6 +62,8 @@ fun App(
     onPredictiveBackChange: ((Boolean) -> Unit)? = null,
     onHideTaskCardChange: ((Boolean) -> Unit)? = null,
     hasRootPermission: Boolean = false,
+    deepLinkImport: DeepLinkImportRequest? = null,
+    onDeepLinkImportConsumed: () -> Unit = {},
 ) {
     val colorSchemeMode = when {
         !themeConfig.useMonet && themeConfig.colorMode == 1 -> ColorSchemeMode.Light
@@ -142,6 +144,8 @@ fun App(
                 onPredictiveBackChange = onPredictiveBackChange,
                 onHideTaskCardChange = onHideTaskCardChange,
                 hasRootPermission = hasRootPermission,
+                deepLinkImport = deepLinkImport,
+                onDeepLinkImportConsumed = onDeepLinkImportConsumed,
             )
         }
     }

@@ -56,6 +56,8 @@ import top.yukonga.mishka.viewmodel.ProviderViewModel
 import top.yukonga.mishka.viewmodel.ProxyViewModel
 import top.yukonga.mishka.viewmodel.SubscriptionViewModel
 
+private const val STATE_DEEPLINK_NONCE = "deeplink_nonce"
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var serviceController: ProxyServiceController
@@ -77,6 +79,10 @@ class MainActivity : ComponentActivity() {
     private var qrResultCallback: ((String?) -> Unit)? = null
     private var wifiPermissionCallback: ((Boolean) -> Unit)? = null
     private var latestThemeConfig: ThemeConfig? = null
+
+    // 深链导入请求：AppNavigation 消费后回调置空
+    private val pendingDeepLinkImport = mutableStateOf<DeepLinkImportRequest?>(null)
+    private var consumedDeepLinkNonce: String? = null
     private val scannerConfig: ScannerConfig by lazy {
         ScannerConfig.build {
             setBarcodeFormats(listOf(BarcodeFormat.FORMAT_QR_CODE))
@@ -89,6 +95,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        consumedDeepLinkNonce = savedInstanceState?.getString(STATE_DEEPLINK_NONCE)
+        acceptDeepLinkImport(intent)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -256,8 +265,36 @@ class MainActivity : ComponentActivity() {
                 onHideTaskCardChange = { enabled ->
                     setExcludeFromRecents(enabled)
                 },
+                deepLinkImport = pendingDeepLinkImport.value,
+                onDeepLinkImportConsumed = { pendingDeepLinkImport.value = null },
             )
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        acceptDeepLinkImport(intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        consumedDeepLinkNonce?.let { outState.putString(STATE_DEEPLINK_NONCE, it) }
+    }
+
+    // nonce 去重：进程死亡恢复会经 onCreate 重放旧深链 intent（需跳过），而「任务存活但进程
+    // 被杀」时新深链可能带着恢复态送达（需接受），savedInstanceState 判空无法区分这两种情况
+    private fun acceptDeepLinkImport(intent: Intent?) {
+        if (intent?.action != ExternalImportActivity.ACTION_IMPORT_SUBSCRIPTION) return
+        val nonce = intent.getStringExtra(ExternalImportActivity.EXTRA_IMPORT_NONCE) ?: return
+        if (nonce == consumedDeepLinkNonce) return
+        val url = intent.getStringExtra(ExternalImportActivity.EXTRA_IMPORT_URL)
+        if (url.isNullOrBlank()) return
+        consumedDeepLinkNonce = nonce
+        pendingDeepLinkImport.value = DeepLinkImportRequest(
+            url = url,
+            name = intent.getStringExtra(ExternalImportActivity.EXTRA_IMPORT_NAME).orEmpty(),
+            intervalMinutes = intent.getLongExtra(ExternalImportActivity.EXTRA_IMPORT_INTERVAL_MINUTES, 0L),
+        )
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

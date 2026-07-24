@@ -57,17 +57,21 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 fun SubscriptionAddUrlScreen(
     viewModel: SubscriptionViewModel,
     initialUrl: String = "",
+    initialName: String = "",
+    initialIntervalMinutes: Long = 0,
     onBack: () -> Unit = {},
     onSaved: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = MiuixScrollBehavior()
     val defaultName = stringResource(R.string.common_new_config)
-    var inputName by remember { mutableStateOf(defaultName) }
+    var inputName by remember { mutableStateOf(initialName.ifBlank { defaultName }) }
     var inputUrl by remember { mutableStateOf(initialUrl) }
     var userAgent by remember { mutableStateOf("") }
     var ageSecretKey by remember { mutableStateOf("") }
-    var intervalMinutes by remember { mutableStateOf("") }
+    var intervalMinutes by remember {
+        mutableStateOf(if (initialIntervalMinutes > 0) initialIntervalMinutes.toString() else "")
+    }
 
     val backdrop = rememberBlurBackdrop()
     val blurActive = backdrop != null

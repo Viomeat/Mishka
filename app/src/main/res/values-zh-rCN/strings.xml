@@ -44,6 +44,9 @@
     <string name="qr_invalid_subscription">不是有效的订阅链接</string>
     <string name="qr_unsupported">不支持的二维码</string>
 
+    <!-- Deep Link Import -->
+    <string name="deep_link_invalid">无效的订阅导入链接</string>
+
     <!-- Service Errors -->
     <string name="error_vpn_failed">VPN 建立失败: %1$s</string>
     <string name="error_vpn_denied">VPN 权限被拒绝</string>

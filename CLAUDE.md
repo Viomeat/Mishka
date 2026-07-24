@@ -86,6 +86,7 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
 - **进程模型**：单进程（VpnService 和 UI 同进程），ROOT 模式 mihomo 为独立 root 进程
 - **数据持久化**：Room 3（结构化数据）+ PlatformStorage（简单偏好）+ StorageKeys（key 常量）+ OverrideJsonStore（`override.user.json` + ConfigurationOverride `@Serializable`）；store 自带 `state: StateFlow<ConfigurationOverride>` + `update(transform)`，Settings 三个切片 VM 共享同一实例
 - **订阅管理**：Pending → Processing → Imported 三阶段沙箱，`ProfileProcessor` 编排 snapshot → fetchAndValid（JNI 一次完成 fetch + provider prefetch + Parse 校验） → commit；processLock 串行，profileLock 守护 DB 一致性
+- **深链一键导入**：`clash://install-config?url=...&name=...&update-interval=...`（兼容 `clashmeta://`）由 ExternalImportActivity（透明 + noHistory + excludeFromRecents）承接，校验 url 为 http(s) 后带随机 nonce 转发 MainActivity（`NEW_TASK|SINGLE_TOP|CLEAR_TOP`），经 `App → AppNavigation` 的 `deepLinkImport` 参数驱动导航：popUntil Main → pager 切订阅 Tab（index 2，订阅管理只有 pager Tab 形态、无二级路由）→ push 预填 `Route.SubscriptionAddUrl(initialUrl/initialName/initialIntervalMinutes)`；保存/取消后回到 Main 的订阅 Tab。**不静默导入**——只预填表单，用户确认保存后走常规 Pending → APPLY 管线。两个防御点：① MainActivity 用 **nonce 去重**（已消费 nonce 随 savedInstanceState 持久化）而非 `savedInstanceState` 判空——进程死亡恢复重放旧 intent 需跳过，而「任务存活但进程被杀」时新深链可能带恢复态送达需接受，判空无法区分；② 跳板 exported，`intent.data` 先 `takeIf { isHierarchical }` 再取 query——非层级 URI 上 `getQueryParameter` 直接抛异常
 - **订阅 HTTP**：mihomo `component/http.HttpRequest`（in-process，cgo），60s context timeout；UA 默认 `ClashMetaForAndroid/{version}`（订阅服务白名单），用户可在订阅 Add/Edit 页面填自定义 UA 持久化到 `ImportedEntity.userAgent` / `PendingEntity.userAgent`，pipeline 经 PendingSnapshot 透传到 `MishkaCoreBridge.fetchAndValid` → JNI → Go `runFetchAndValid` 内 `effectiveUA = trim(userAgent) ?: currentUserAgent()`；非 2xx / 空 body → `MishkaCoreError`；不做 base64/V2Ray 转换，原始 YAML 直接交 mihomo
 - **age 加密订阅**：per-profile `ageSecretKey`（DB v3）随 pipeline 经 `PendingSnapshot` 透传到 `MishkaCoreBridge.fetchAndValid(ageSecretKey)`。**加密原样落盘，运行时解密**（对齐 CMFA）：
   - **导入校验**：Kotlin 侧在 native fetch 前 `nativeSetAgeSecretKey(key)`、fetch 后清空（processLock 串行保证全局密钥不串）；Go `runFetchAndValid` 里 `config.UnmarshalRawConfig`/`ParseRawConfig` 用该全局密钥**在内存中**解密校验，**config.yaml 与 provider 文件保持加密落盘**（fetch.go 不重写明文）。
@@ -159,9 +160,8 @@ files/mihomo/
 | 路由               | 类型        | 页面                          | 入口                   |
 | ------------------ | ----------- | ----------------------------- | ---------------------- |
 | Main               | data object | 主页（HorizontalPager 4 Tab） | 根路由                 |
-| Subscription       | data object | SubscriptionScreen            | 主页 Tab 2 导航        |
-| SubscriptionAdd    | data object | SubscriptionAddScreen         | 订阅页                 |
-| SubscriptionAddUrl | data class  | SubscriptionAddUrlScreen      | 添加订阅页             |
+| SubscriptionAdd    | data object | SubscriptionAddScreen         | 订阅 Tab               |
+| SubscriptionAddUrl | data class  | SubscriptionAddUrlScreen      | 添加订阅页 / 扫码 / clash:// 深链 |
 | SubscriptionEdit   | data class  | SubscriptionEditScreen        | 订阅项编辑按钮         |
 | Log                | data object | LogScreen                     | QuickEntries           |
 | Provider           | data object | ProviderScreen                | QuickEntries           |
@@ -254,6 +254,7 @@ files/mihomo/
 | ProfileReceiver            | AlarmManager 调度自动更新                                                                                                                                                                            |
 | ProfileWorker              | 前台服务执行后台配置更新                                                                                                                                                                             |
 | VpnPermissionActivity      | 透明跳板 Activity：Tile / 通知等无 Activity 上下文的 VPN 授权（见关键约束「启动校验单点」）                                                                                                          |
+| ExternalImportActivity     | `clash://` / `clashmeta://install-config` 深链透明跳板（根包）：解析 url/name/update-interval → NEW_TASK+SINGLE_TOP+CLEAR_TOP 转发 MainActivity → 预填 SubscriptionAddUrlScreen，用户确认后走常规导入管线 |
 | IptablesIntranet           | 私网/组播/保留段 CIDR 常量（V4/V6），ROOT TUN route-exclude 与 ROOT TPROXY RETURN 共用                                                                                                               |
 
 ## 数据模型

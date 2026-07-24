@@ -70,6 +70,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import top.yukonga.mishka.DeepLinkImportRequest
 import top.yukonga.mishka.R
 import top.yukonga.mishka.platform.BootStartManager
 import top.yukonga.mishka.platform.FilePicker
@@ -198,11 +199,29 @@ fun AppNavigation(
     onPredictiveBackChange: ((Boolean) -> Unit)? = null,
     onHideTaskCardChange: ((Boolean) -> Unit)? = null,
     hasRootPermission: Boolean = false,
+    deepLinkImport: DeepLinkImportRequest? = null,
+    onDeepLinkImportConsumed: () -> Unit = {},
 ) {
     val backStack = rememberSaveable(saver = NavBackStackSaver) { mutableStateListOf<NavKey>(Route.Main) }
     val navigator = remember { Navigator(backStack) }
     val pagerState = rememberPagerState(pageCount = { 4 })
     val mainPagerState = rememberMainPagerState(pagerState)
+
+    // 深链导入：回 Main 并把 pager 切到订阅 Tab 后直接压预填添加页（订阅管理是 pager Tab，无二级路由）
+    LaunchedEffect(deepLinkImport) {
+        if (deepLinkImport != null) {
+            navigator.popUntil { key -> key is Route.Main }
+            mainPagerState.animateToPage(2)
+            navigator.push(
+                Route.SubscriptionAddUrl(
+                    initialUrl = deepLinkImport.url,
+                    initialName = deepLinkImport.name,
+                    initialIntervalMinutes = deepLinkImport.intervalMinutes,
+                )
+            )
+            onDeepLinkImportConsumed()
+        }
+    }
 
     LaunchedEffect(mainPagerState.pagerState.currentPage) {
         mainPagerState.syncPage()
@@ -235,17 +254,6 @@ fun AppNavigation(
                     onRequestWifiPermission,
                 )
             }
-            entry<Route.Subscription> {
-                subscriptionViewModel?.let {
-                    SubscriptionScreen(
-                        viewModel = it,
-                        onBack = { navigator.pop() },
-                        onNavigateAdd = { navigator.push(Route.SubscriptionAdd) },
-                        onNavigateEdit = { uuid -> navigator.push(Route.SubscriptionEdit(uuid)) },
-                        onActiveChanged = { homeViewModel?.onActiveSubscriptionChanged() },
-                    )
-                }
-            }
             entry<Route.SubscriptionAdd> {
                 SubscriptionAddScreen(
                     viewModel = subscriptionViewModel,
@@ -257,7 +265,7 @@ fun AppNavigation(
                                     fileName = result.fileName,
                                     content = result.content,
                                     onComplete = {
-                                        navigator.popUntil { key -> key is Route.Subscription }
+                                        navigator.popUntil { key -> key is Route.Main }
                                     },
                                 )
                             }
@@ -280,8 +288,10 @@ fun AppNavigation(
                     SubscriptionAddUrlScreen(
                         viewModel = it,
                         initialUrl = route.initialUrl,
+                        initialName = route.initialName,
+                        initialIntervalMinutes = route.initialIntervalMinutes,
                         onBack = { navigator.pop() },
-                        onSaved = { navigator.popUntil { key -> key is Route.Subscription } },
+                        onSaved = { navigator.popUntil { key -> key is Route.Main } },
                     )
                 }
             }

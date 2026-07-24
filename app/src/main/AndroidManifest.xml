@@ -41,6 +41,23 @@
             </intent-filter>
         </activity>
 
+        <!-- clash:// / clashmeta:// 订阅一键导入深链入口 -->
+        <activity
+            android:name=".ExternalImportActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Mishka.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="clash" />
+                <data android:scheme="clashmeta" />
+                <data android:host="install-config" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".service.VpnPermissionActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"

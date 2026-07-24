@@ -22,14 +22,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,7 +53,6 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Refresh
@@ -74,7 +70,6 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 fun SubscriptionScreen(
     viewModel: SubscriptionViewModel,
     bottomPadding: Dp = 0.dp,
-    onBack: (() -> Unit)? = null,
     onNavigateAdd: () -> Unit = {},
     onNavigateEdit: (uuid: String) -> Unit = {},
     onActiveChanged: (() -> Unit)? = null,
@@ -93,23 +88,7 @@ fun SubscriptionScreen(
                     title = stringResource(R.string.subscription_title),
                     color = barColor,
                     scrollBehavior = scrollBehavior,
-                    navigationIcon = if (onBack != null) {
-                        {
-                            IconButton(onClick = onBack) {
-                                val layoutDirection = LocalLayoutDirection.current
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = stringResource(R.string.common_back),
-                                    tint = MiuixTheme.colorScheme.onSurface,
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = if (layoutDirection == LayoutDirection.Rtl) -1f else 1f
-                                    },
-                                )
-                            }
-                        }
-                    } else {
-                        {}
-                    },
+                    navigationIcon = {},
                     actions = {
                         if (uiState.subscriptions.any { it.url.isNotBlank() }) {
                             IconButton(
