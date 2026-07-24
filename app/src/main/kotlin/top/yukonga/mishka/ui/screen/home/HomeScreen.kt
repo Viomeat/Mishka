@@ -133,7 +133,7 @@ fun HomeScreen(
         providers = uiState.providerTraffic,
         isLoading = uiState.isProviderTrafficLoading,
         loadFailed = uiState.providerTrafficLoadFailed,
-        onRefresh = { viewModel?.refreshProviderTraffic() },
+        onUpdateAll = { viewModel?.updateAllProviders() },
         onDismiss = { showSubscriptionTraffic = false },
     )
 }

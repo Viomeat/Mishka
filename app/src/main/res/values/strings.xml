@@ -149,9 +149,10 @@
     <string name="home_system">System</string>
     <string name="home_used">Used</string>
     <string name="home_total">Total</string>
-    <string name="home_subscription_provider_traffic">Provider Traffic</string>
-    <string name="home_subscription_no_provider_traffic">No provider traffic info</string>
-    <string name="home_subscription_provider_traffic_load_failed">Unable to load provider traffic</string>
+    <string name="home_subscription_provider_traffic">Proxy Providers</string>
+    <string name="home_subscription_no_provider_traffic">No proxy providers in this subscription</string>
+    <string name="home_subscription_provider_traffic_load_failed">Unable to load provider info</string>
+    <string name="home_provider_update_all">Update all</string>
     <string name="home_remaining">Remaining</string>
     <string name="home_expire">Expires</string>
     <string name="home_no_expire">No expiry</string>

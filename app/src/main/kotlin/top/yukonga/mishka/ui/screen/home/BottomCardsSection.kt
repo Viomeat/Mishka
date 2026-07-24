@@ -22,10 +22,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +40,7 @@ import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import top.yukonga.mishka.R
 import top.yukonga.mishka.util.FormatUtils
+import top.yukonga.mishka.util.formatIsoTimeRelative
 import top.yukonga.mishka.viewmodel.HomeUiState
 import top.yukonga.mishka.viewmodel.MemorySnapshot
 import top.yukonga.mishka.viewmodel.ProviderTrafficInfo
@@ -148,7 +151,7 @@ internal fun SubscriptionTrafficDialog(
     providers: ImmutableList<ProviderTrafficInfo>,
     isLoading: Boolean,
     loadFailed: Boolean,
-    onRefresh: () -> Unit,
+    onUpdateAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     WindowBottomSheet(
@@ -156,10 +159,11 @@ internal fun SubscriptionTrafficDialog(
         title = stringResource(R.string.home_subscription_provider_traffic),
         onDismissRequest = onDismiss,
         startAction = {
-            IconButton(onClick = onRefresh, enabled = !isLoading) {
+            // 打开弹窗时已自动 GET 重读快照；此按钮触发真实更新（会消耗订阅服务器配额）
+            IconButton(onClick = onUpdateAll, enabled = !isLoading) {
                 Icon(
                     imageVector = MiuixIcons.Refresh,
-                    contentDescription = stringResource(R.string.common_refresh),
+                    contentDescription = stringResource(R.string.home_provider_update_all),
                     tint = MiuixTheme.colorScheme.onBackground,
                 )
             }
@@ -247,6 +251,7 @@ private fun ProviderTrafficCard(provider: ProviderTrafficInfo) {
         0f
     }
     val percent = if (hasQuota) "${(progress * 100).roundToInt()}%" else "--"
+    val updatedText = remember(provider.updatedAt) { formatIsoTimeRelative(provider.updatedAt) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -254,32 +259,68 @@ private fun ProviderTrafficCard(provider: ProviderTrafficInfo) {
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = provider.name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MiuixTheme.colorScheme.onSurface,
+            Row(
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 6.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = provider.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (provider.nodeCount > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    NodeCountBadge(provider.nodeCount)
+                }
+            }
             Spacer(Modifier.width(8.dp))
-            UsageBadge(percent)
+            if (updatedText.isNotEmpty()) {
+                Text(
+                    text = updatedText,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                )
+            }
+            if (provider.hasTraffic) {
+                Spacer(Modifier.width(6.dp))
+                UsageBadge(percent)
+            }
         }
 
-        TrafficDetailPanel(
-            progress = progress.takeIf { hasQuota },
-            used = FormatUtils.formatBytes(used),
-            remaining = if (hasQuota) FormatUtils.formatBytes(remaining) else "--",
-            total = if (hasQuota) FormatUtils.formatBytes(total) else "--",
-            expire = expireText(provider.expire),
-        )
+        if (provider.hasTraffic) {
+            TrafficDetailPanel(
+                progress = progress.takeIf { hasQuota },
+                used = FormatUtils.formatBytes(used),
+                remaining = if (hasQuota) FormatUtils.formatBytes(remaining) else "--",
+                total = if (hasQuota) FormatUtils.formatBytes(total) else "--",
+                expire = expireText(provider.expire),
+            )
+        }
     }
+}
+
+@Composable
+private fun NodeCountBadge(count: Int) {
+    Text(
+        text = count.toString(),
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = FontFamily.Monospace,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
 }
 
 @Composable

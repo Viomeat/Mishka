@@ -1,5 +1,6 @@
 package top.yukonga.mishka.util
 
+import android.text.format.DateUtils
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.number
@@ -18,6 +19,23 @@ fun formatIsoTimeAsLocalShort(isoTime: String): String {
         Instant.parse(isoTime).toLocalDateTime(TimeZone.currentSystemDefault()).formatShort()
     } catch (_: Exception) {
         isoTime
+    }
+}
+
+/**
+ * 把 ISO-8601 时间字符串格式化为系统本地化的相对时间（如「1 天前」/「1 day ago」）。
+ * 空串、Go 零值时间或解析失败返回空串。
+ */
+fun formatIsoTimeRelative(isoTime: String): String {
+    if (isoTime.isBlank() || isoTime.startsWith("0001-")) return ""
+    return try {
+        DateUtils.getRelativeTimeSpanString(
+            Instant.parse(isoTime).toEpochMilliseconds(),
+            System.currentTimeMillis(),
+            DateUtils.MINUTE_IN_MILLIS,
+        ).toString()
+    } catch (_: Exception) {
+        ""
     }
 }
 

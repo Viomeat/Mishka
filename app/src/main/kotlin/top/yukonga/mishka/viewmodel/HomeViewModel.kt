@@ -60,11 +60,18 @@ data class HomeUiState(
 data class ProviderTrafficInfo(
     val id: String,
     val name: String,
+    val nodeCount: Int,
+    val updatedAt: String,
+    // subscription-userinfo 缺失时 false：UI 仅隐藏流量面板，不整卡过滤
+    val hasTraffic: Boolean,
     val upload: Long,
     val download: Long,
     val total: Long,
     val expire: Long,
 )
+
+// mihomo 的 "default" 特殊 provider（proxies: 段运行时聚合）的 vehicleType，非订阅集合，展示与更新都排除
+private const val VEHICLE_TYPE_COMPATIBLE = "Compatible"
 
 /** 高频流量快照：每 100–500ms 更新，独立 Flow 隔离重组 */
 @Immutable
@@ -257,33 +264,70 @@ class HomeViewModel(
     private fun refreshProviderTraffic(repo: MihomoRepository, subscriptionId: String?) {
         providerTrafficJob?.cancel()
         val requestId = ++providerTrafficRequestId
+        setProviderTrafficLoading(repo, subscriptionId, requestId)
+        providerTrafficJob = viewModelScope.launch {
+            loadProviderTrafficSnapshot(repo, subscriptionId, requestId)
+        }
+    }
+
+    /**
+     * 更新全部 provider：mihomo 仅在 provider 重新拉订阅时刷新 subscription-userinfo，
+     * 纯 GET 读到的永远是上次更新的旧快照。逐个 PUT 触发更新（单个失败不中断，
+     * 该 provider 保持旧数据），全部完成后统一重读快照并把聚合推回 Repository。
+     */
+    fun updateAllProviders() {
+        val repo = repository ?: return
+        val subscriptionId = repositorySubscriptionId
+        if (getActiveSubscriptionId() != subscriptionId) return
+        providerTrafficJob?.cancel()
+        val requestId = ++providerTrafficRequestId
+        setProviderTrafficLoading(repo, subscriptionId, requestId)
+        providerTrafficJob = viewModelScope.launch {
+            val names = repo.getProviders().getOrNull()?.providers.orEmpty()
+                .filterValues { !it.vehicleType.equals(VEHICLE_TYPE_COMPATIBLE, ignoreCase = true) }
+                .map { (fallbackName, provider) -> provider.name.ifBlank { fallbackName } }
+            if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return@launch
+            names.forEach { name ->
+                repo.updateProvider(name)
+                if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return@launch
+            }
+            loadProviderTrafficSnapshot(repo, subscriptionId, requestId)
+        }
+    }
+
+    private fun setProviderTrafficLoading(repo: MihomoRepository, subscriptionId: String?, requestId: Long) {
         _uiState.update { state ->
             if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) state else state.copy(
                 isProviderTrafficLoading = true,
                 providerTrafficLoadFailed = false,
             )
         }
-        providerTrafficJob = viewModelScope.launch {
-            val result = repo.getProviders()
-            if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return@launch
-            result.onSuccess { providers ->
-                _uiState.update { state ->
-                    if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) state else state.copy(
-                        providerTraffic = providerTrafficInfo(providers),
-                        isProviderTrafficLoading = false,
-                        providerTrafficLoadFailed = false,
-                    )
-                }
-                if (isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) {
-                    onLiveProviderInfo(subscriptionId, aggregateProviderInfo(providers))
-                }
-            }.onFailure {
-                _uiState.update { state ->
-                    if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) state else state.copy(
-                        isProviderTrafficLoading = false,
-                        providerTrafficLoadFailed = true,
-                    )
-                }
+    }
+
+    private suspend fun loadProviderTrafficSnapshot(
+        repo: MihomoRepository,
+        subscriptionId: String?,
+        requestId: Long,
+    ) {
+        val result = repo.getProviders()
+        if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return
+        result.onSuccess { providers ->
+            _uiState.update { state ->
+                if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) state else state.copy(
+                    providerTraffic = providerTrafficInfo(providers),
+                    isProviderTrafficLoading = false,
+                    providerTrafficLoadFailed = false,
+                )
+            }
+            if (isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) {
+                onLiveProviderInfo(subscriptionId, aggregateProviderInfo(providers))
+            }
+        }.onFailure {
+            _uiState.update { state ->
+                if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) state else state.copy(
+                    isProviderTrafficLoading = false,
+                    providerTrafficLoadFailed = true,
+                )
             }
         }
     }
@@ -331,14 +375,19 @@ class HomeViewModel(
     private fun providerTrafficInfo(providers: ProvidersResponse): ImmutableList<ProviderTrafficInfo> {
         return providers.providers
             .mapNotNull { (fallbackName, provider) ->
-                val info = provider.subscriptionInfo ?: return@mapNotNull null
+                // "default" 等 Compatible 特殊 provider 是 proxies: 段的运行时聚合，不是订阅集合
+                if (provider.vehicleType.equals(VEHICLE_TYPE_COMPATIBLE, ignoreCase = true)) return@mapNotNull null
+                val info = provider.subscriptionInfo
                 ProviderTrafficInfo(
                     id = fallbackName,
                     name = provider.name.ifBlank { fallbackName },
-                    upload = info.Upload,
-                    download = info.Download,
-                    total = info.Total,
-                    expire = info.Expire,
+                    nodeCount = provider.proxies.size,
+                    updatedAt = provider.updatedAt,
+                    hasTraffic = info != null,
+                    upload = info?.Upload ?: 0,
+                    download = info?.Download ?: 0,
+                    total = info?.Total ?: 0,
+                    expire = info?.Expire ?: 0,
                 )
             }
             .sortedBy { it.name.lowercase() }
