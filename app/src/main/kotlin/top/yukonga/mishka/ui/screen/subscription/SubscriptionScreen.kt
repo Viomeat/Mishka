@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -266,17 +265,6 @@ private fun SubscriptionItem(
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
-        }
-
-        if (subscription.url.isNotEmpty()) {
-            Text(
-                text = subscription.url,
-                modifier = Modifier.padding(top = 2.dp),
-                fontSize = 12.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
