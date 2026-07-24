@@ -57,7 +57,6 @@ import top.yukonga.mishka.ui.component.blur.rememberBlurEnabled
 import top.yukonga.mishka.ui.component.effect.BgEffectBackground
 import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -339,7 +338,7 @@ private fun AboutContent(
                     Column(
                         modifier = Modifier.padding(bottom = 12.dp),
                     ) {
-                        SmallTitle(text = stringResource(R.string.about_info))
+                        SmallTitle(text = stringResource(R.string.about_open_source))
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -361,64 +360,31 @@ private fun AboutContent(
                                 Color.Transparent,
                             ),
                         ) {
-                            BasicComponent(
-                                title = stringResource(R.string.about_app_version),
-                                summary = BuildConfig.VERSION_NAME,
-                            )
-                            BasicComponent(
-                                title = stringResource(R.string.about_build_version),
-                                summary = "${BuildConfig.VERSION_CODE}",
-                            )
-                            if (mihomoVersion.isNotEmpty()) {
-                                BasicComponent(
-                                    title = stringResource(R.string.about_mihomo_version),
-                                    summary = mihomoVersion,
+                            val ossProjects = remember(mihomoVersion) {
+                                listOf(
+                                    "Mishka" to "https://github.com/YuKongA/Mishka",
+                                    (if (mihomoVersion.isNotEmpty()) "mihomo ($mihomoVersion)" else "mihomo") to "https://github.com/MetaCubeX/mihomo",
+                                    "miuix" to "https://github.com/compose-miuix-ui/miuix",
+                                    "scripta" to "https://github.com/YuKongA/scripta",
+                                    "AndroidHiddenApiBypass" to "https://github.com/LSPosed/AndroidHiddenApiBypass",
+                                    "AndroidX" to "https://github.com/androidx/androidx",
+                                    "Koin" to "https://github.com/InsertKoinIO/koin",
+                                    "Kotlin" to "https://github.com/JetBrains/kotlin",
+                                    "kotlinx.collections.immutable" to "https://github.com/Kotlin/kotlinx.collections.immutable",
+                                    "kotlinx.coroutines" to "https://github.com/Kotlin/kotlinx.coroutines",
+                                    "kotlinx-datetime" to "https://github.com/Kotlin/kotlinx-datetime",
+                                    "kotlinx.serialization" to "https://github.com/Kotlin/kotlinx.serialization",
+                                    "Ktor" to "https://github.com/ktorio/ktor",
+                                    "quickie" to "https://github.com/G00fY2/quickie",
                                 )
                             }
-                        }
-
-                        SmallTitle(text = stringResource(R.string.about_project))
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp)
-                                .padding(bottom = 12.dp)
-                                .then(
-                                    if (blurEnabled) {
-                                        Modifier.textureBlur(
-                                            backdrop = backdrop,
-                                            shape = RoundedCornerShape(16.dp),
-                                            blurRadius = 60f,
-                                            colors = BlurColors(blendColors = cardBlendColors),
-                                            enabled = true,
-                                        )
-                                    } else Modifier
-                                ),
-                            colors = CardDefaults.defaultColors(
-                                if (blurEnabled) Color.Transparent else colorScheme.surfaceContainer,
-                                Color.Transparent,
-                            ),
-                        ) {
-                            ArrowPreference(
-                                title = "Mishka",
-                                summary = "github.com/YuKongA/Mishka",
-                                onClick = { onOpenUrl("https://github.com/YuKongA/Mishka") },
-                            )
-                            ArrowPreference(
-                                title = "mihomo",
-                                summary = "github.com/MetaCubeX/mihomo",
-                                onClick = { onOpenUrl("https://github.com/MetaCubeX/mihomo") },
-                            )
-                            ArrowPreference(
-                                title = "miuix",
-                                summary = "github.com/compose-miuix-ui/miuix",
-                                onClick = { onOpenUrl("https://github.com/compose-miuix-ui/miuix") },
-                            )
-                            ArrowPreference(
-                                title = "quickie",
-                                summary = "github.com/G00fY2/quickie",
-                                onClick = { onOpenUrl("https://github.com/G00fY2/quickie") },
-                            )
+                            ossProjects.forEach { (name, url) ->
+                                ArrowPreference(
+                                    title = name,
+                                    summary = url.removePrefix("https://"),
+                                    onClick = { onOpenUrl(url) },
+                                )
+                            }
                         }
 
                         Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))

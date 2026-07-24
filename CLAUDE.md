@@ -205,7 +205,7 @@ files/mihomo/
 | FileManagerScreen        | SubscriptionViewModel | imported 订阅目录浏览                                           |
 | BackupRestoreScreen      | BackupViewModel       | 备份与恢复（本地/WebDAV 两入口行，各自 Dialog 内完成操作；恢复后强制重启） |
 | FileManagerEditorScreen  | SubscriptionViewModel | 多行 TextField 编辑 YAML，保存前 mihomo -t 校验，失败回滚       |
-| AboutScreen              | —                     | 版本信息（hero 图标 + 3 阶段视差 + OS3 动态背景）               |
+| AboutScreen              | —                     | hero 图标 + 3 阶段视差 + OS3 动态背景 + 开放源代码许可列表（版本信息在 hero，无独立信息卡；mihomo 版本拼在其许可条目 title） |
 | SubscriptionAddScreen    | —                     | 添加方式选择（文件/URL/QR Code）                                |
 | SubscriptionAddUrlScreen | SubscriptionViewModel | URL 导入订阅                                                    |
 

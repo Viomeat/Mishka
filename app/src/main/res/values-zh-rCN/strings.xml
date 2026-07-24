@@ -519,11 +519,7 @@
 
     <!-- About -->
     <string name="about_title">关于</string>
-    <string name="about_info">信息</string>
-    <string name="about_app_version">应用版本</string>
-    <string name="about_build_version">构建版本</string>
-    <string name="about_mihomo_version">mihomo 版本</string>
-    <string name="about_project">项目</string>
+    <string name="about_open_source">开放源代码许可</string>
 
     <!-- FormatUtils -->
 
