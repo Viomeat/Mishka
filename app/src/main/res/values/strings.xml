@@ -488,6 +488,37 @@
     <string name="settings_file_manager">File Manager</string>
     <string name="settings_file_manager_summary">Browse and edit imported subscription files</string>
 
+    <!-- WebDAV Backup & Restore -->
+    <string name="settings_backup">Backup &amp; Restore</string>
+    <string name="settings_backup_summary">Back up and restore via local file or WebDAV</string>
+    <string name="backup_title">Backup &amp; Restore</string>
+    <string name="backup_hint">Back up subscriptions, overrides and preferences to a WebDAV server as a single archive. Restoring overwrites local data.</string>
+    <string name="backup_server_url">Server URL</string>
+    <string name="backup_username">Username</string>
+    <string name="backup_password">Password</string>
+    <string name="backup_test_connection">Test connection</string>
+    <string name="backup_now">Back up to WebDAV</string>
+    <string name="backup_restore_now">Restore from WebDAV</string>
+    <string name="backup_missing_credentials">Server URL, username and password are required</string>
+    <string name="backup_connection_ok">Connection successful</string>
+    <string name="backup_done">Backup completed</string>
+    <string name="backup_not_found">No backup found on the server</string>
+    <string name="backup_stop_proxy_first">Stop the proxy before restoring</string>
+    <string name="backup_failed">Operation failed: %1$s</string>
+    <string name="backup_restore_confirm_title">Restore backup</string>
+    <string name="backup_restore_confirm_summary">Local subscriptions and settings will be overwritten by the server backup. This cannot be undone. Continue?</string>
+    <string name="backup_restore_done_title">Restore completed</string>
+    <string name="backup_restore_done_summary">The app needs to restart to load the restored data.</string>
+    <string name="backup_restart_now">Restart now</string>
+    <string name="backup_section_local">Local backup</string>
+    <string name="backup_export_local">Back up to file</string>
+    <string name="backup_restore_local">Restore from file</string>
+    <string name="backup_export_done">Backup file saved</string>
+    <string name="backup_local_save_failed">Failed to write backup file</string>
+    <string name="backup_section_webdav">WebDAV</string>
+    <string name="backup_local_row_summary">Back up to or restore from a file</string>
+    <string name="backup_webdav_row_summary">Back up to or restore from a WebDAV server</string>
+
     <!-- About -->
     <string name="about_title">About</string>
     <string name="about_info">Info</string>

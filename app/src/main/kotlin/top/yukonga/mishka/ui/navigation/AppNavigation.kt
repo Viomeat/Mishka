@@ -90,6 +90,7 @@ import top.yukonga.mishka.ui.screen.provider.ProviderScreen
 import top.yukonga.mishka.ui.screen.proxy.ProxyScreen
 import top.yukonga.mishka.ui.screen.settings.AboutScreen
 import top.yukonga.mishka.ui.screen.settings.AppProxyScreen
+import top.yukonga.mishka.ui.screen.settings.BackupRestoreScreen
 import top.yukonga.mishka.ui.screen.settings.ExternalControlScreen
 import top.yukonga.mishka.ui.screen.settings.FileManagerEditorScreen
 import top.yukonga.mishka.ui.screen.settings.FileManagerScreen
@@ -110,6 +111,7 @@ import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.mishka.ui.theme.ThemeConfig
 import top.yukonga.mishka.ui.util.rememberIsWideScreen
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
+import top.yukonga.mishka.viewmodel.BackupViewModel
 import top.yukonga.mishka.viewmodel.ConnectionViewModel
 import top.yukonga.mishka.viewmodel.DnsQueryViewModel
 import top.yukonga.mishka.viewmodel.ExternalControlViewModel
@@ -201,6 +203,8 @@ fun AppNavigation(
     hasRootPermission: Boolean = false,
     deepLinkImport: DeepLinkImportRequest? = null,
     onDeepLinkImportConsumed: () -> Unit = {},
+    backupViewModel: BackupViewModel? = null,
+    onRestartApp: () -> Unit = {},
 ) {
     val backStack = rememberSaveable(saver = NavBackStackSaver) { mutableStateListOf<NavKey>(Route.Main) }
     val navigator = remember { Navigator(backStack) }
@@ -409,6 +413,17 @@ fun AppNavigation(
                     )
                 }
             }
+            entry<Route.BackupRestore> {
+                if (backupViewModel != null && storage != null) {
+                    BackupRestoreScreen(
+                        viewModel = backupViewModel,
+                        storage = storage,
+                        filePicker = filePicker,
+                        onRestartApp = onRestartApp,
+                        onBack = { navigator.pop() },
+                    )
+                }
+            }
             entry<Route.FileManager> {
                 FileManagerScreen(
                     subscriptionViewModel = subscriptionViewModel,
@@ -522,6 +537,7 @@ private fun MainPage(
                     onNavigateWifiPolicy = { navigator.push(Route.WifiPolicy) },
                     onNavigateThemeSettings = { navigator.push(Route.ThemeSettings) },
                     onNavigateFileManager = { navigator.push(Route.FileManager) },
+                    onNavigateBackup = { navigator.push(Route.BackupRestore) },
                     onNavigateAbout = { navigator.push(Route.About) },
                     bootStartManager = bootStartManager,
                     storage = storage,

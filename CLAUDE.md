@@ -55,9 +55,9 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
 **Koin 依赖注入**（`严格遵循 koin inject`，4 模块均在 `:app` 的 `di/` 包，按职责拆分而非模块边界）：
 
 - `dataModule`：appScope（CoroutineScope 单例）、DAO（从 AppDatabase）、OverrideJsonStore、SubscriptionProxyResolver、MihomoConnectionManager、`SubscriptionRepositoryImpl` + `single<SubscriptionRepository>{ get<SubscriptionRepositoryImpl>() }` 接口绑定、`factory { ProfileProcessor }`
-- `androidPlatformModule`（`androidContext()` 绑定 app Context）：AppDatabase、PlatformStorage、ProxyServiceController、AppListProvider、WifiPolicyController、BootStartManager
+- `androidPlatformModule`（`androidContext()` 绑定 app Context）：AppDatabase、PlatformStorage、ProxyServiceController、AppListProvider、WifiPolicyController、BootStartManager、BackupManager
 - `androidAppModule`：`single<ProfileFileManager>{ AndroidProfileFileManager }`（实现属服务层）
-- `viewModelModule`：11 个 ViewModel（单 Activity，用 `single`）；HomeViewModel/ProxyViewModel 的 getActive lambda 从 `get<SubscriptionRepository>()` 派生；**SubscriptionViewModel 注入 `androidContext()`**（`context.getString(R.string.x)` 解析错误文案）
+- `viewModelModule`：12 个 ViewModel（单 Activity，用 `single`）；HomeViewModel/ProxyViewModel 的 getActive lambda 从 `get<SubscriptionRepository>()` 派生；**SubscriptionViewModel 注入 `androidContext()`**（`context.getString(R.string.x)` 解析错误文案）
 - **组合根注入**：VM/服务图由 Koin 管理，MainActivity 用 `org.koin.android.ext.android.get()` 在组合根取图后透传给 `App(...)`（App 签名保持全参数化默认值，屏幕仍参数化、不用 koinViewModel）；仅需 Activity 上下文的 FilePicker / VPN 授权 launcher 由 MainActivity 直接持有，不入 Koin
 - **repo 实现必配接口**：`data.repository.*Impl` 对应 `domain.repository.*` 接口；ViewModel/组合根依赖接口，`ProfileProcessor`（需实体级方法）依赖 `SubscriptionRepositoryImpl` 具体类。OverrideJsonStore/SubscriptionProxyResolver/ProfileProcessor 为 use-case/service（非 Repository），保留具体类但 Koin 注入
 
@@ -98,6 +98,7 @@ MishkaApplication.startKoin ─ Koin 容器（dataModule + androidPlatformModule
 - **Pipeline 可取消**：协程 cancel → `nativeCancel(token)` → Go ctx Done → native 立即返回 "context canceled"；`ImportProgressDialog` 可选 `onCancel`；`cancelCurrentUpdate` 先同步 `clearProgress()` 让 UI 立即响应，再 cancel 协程
 - **GeoIP 预制**：构建时 DownloadGeoFilesTask 下载 geoip.metadb/geosite.dat/ASN.mmdb 到 assets，启动时提取到 `files/mihomo/geodata/`。JNI 路径用 `mishkaCoreInit(geodataDir)` 把 mihomo 全局 homeDir 指到这里；subprocess runtime 仍按 `-d workDir` + symlink 复用同一份 GeoIP
 - **配置校验**：JNI in-process `MishkaCoreBridge.fetchAndValid` 调用 mihomo `config.ParseRawConfig`，含 GEOIP/GEOSITE/IP-ASN 规则时触发数据库 init（缺失则走代理下载到 geodata/）
+- **WebDAV 备份恢复**：设置 →「备份与恢复」（`Route.BackupRestore` + `BackupViewModel` + `data/backup/`）。固定文件名覆盖式：[WebDavClient](app/src/main/kotlin/top/yukonga/mishka/data/backup/WebDavClient.kt) 只做 MKCOL/PUT/GET + Basic Auth（Ktor 短生命周期 client 用完即 close，无 PROPFIND 多版本历史），路径 `{root}/Mishka/mishka-backup.zip`。[BackupManager](app/src/main/kotlin/top/yukonga/mishka/data/backup/BackupManager.kt) 打包 `backup.json`（三表 **JSON 导出重放**而非拷 db 文件——绕开 WAL 一致性、跨 schema 由字段默认值兜底 + prefs 两类 Map）+ imported/、pending/ 目录树 + override.user.json。**geodata 符号链接与实体拷贝不进备份**（`ProfileFileOps.GEODATA_FILES` 名单 + isSymbolicLink 双重排除，启动/校验路径 ensureGeodataLinks 自动重建；否则 readBytes 追链接把几十 MB GeoIP 实体化进 zip）；prefs 黑名单排除设备/运行时态（HAS_ROOT / ROOT PID / boot-session / Wi-Fi 运行中间态 / 迁移标记）与 WebDAV 凭据自身。备份与恢复都持 `ProfileProcessor.withProcessLock` 进程级锁（防与导入管线并发互踩）；恢复前置校验代理已停止（Bridge 非 Running/Starting/Stopping），解包 canonicalPath 校验防 zip-slip，active uuid 指向不存在订阅时清空；**恢复成功后强制重启进程**（OverrideJsonStore / Repository Flow 等内存热状态不随磁盘恢复刷新），完成对话框仅「立即重启」一个按钮 → `MainActivity.restartApplication()`（CLEAR_TASK relaunch + exit）。**组件状态型设置**：开机自启是 PackageManager 组件位而非 pref，走快照独立字段 `bootStartEnabled` 捕获/恢复；Wi-Fi 策略的组件位与监控服务由重启后 MainActivity 按恢复出的 `WIFI_POLICY_ENABLED` 幂等 reconcile（恢复时机拉起的服务活不过强制重启）。**本地备份**复用同一 zip 与恢复管线：FilePicker 扩展 SAF `CreateDocument`（`saveZipFile`，`"wt"` 截断写防旧文档尾部残留损坏 zip）+ `OpenDocument` 读字节（`pickZipFile`，不按 MIME 过滤——网盘流转后 provider 常报 octet-stream）；导出文件名带时间戳 `mishka-backup-yyyyMMdd-HHmmss.zip`，取消（uri=null）静默不提示；两种恢复来源共用覆盖确认对话框（`pendingRestoreAction` 挂起动作模式）
 - **国际化**：英文 + 中文（zh-rCN），Composable 内 `stringResource(R.string.x)`、非 Composable `context.getString(R.string.x)`；日志消息英文，代码注释中文
 
 ## 数据库架构（Room 3）
@@ -176,6 +177,7 @@ files/mihomo/
 | AppProxy           | data object | AppProxyScreen                | 设置页                 |
 | WifiPolicy         | data object | WifiPolicyScreen              | 设置页                 |
 | FileManager        | data object | FileManagerScreen             | 设置页                 |
+| BackupRestore      | data object | BackupRestoreScreen           | 设置页                 |
 | FileManagerEditor  | data class  | FileManagerEditorScreen       | FileManager 点击项     |
 | About              | data object | AboutScreen                   | 设置页                 |
 
@@ -201,6 +203,7 @@ files/mihomo/
 | MetaSettingsScreen       | MetaSettingsVM        | 统一延迟/Geodata/TCP 并发/嗅探器                                |
 | ExternalControlScreen    | ExternalControlVM     | mihomo HTTP API external-controller + API secret                |
 | FileManagerScreen        | SubscriptionViewModel | imported 订阅目录浏览                                           |
+| BackupRestoreScreen      | BackupViewModel       | 备份与恢复（本地/WebDAV 两入口行，各自 Dialog 内完成操作；恢复后强制重启） |
 | FileManagerEditorScreen  | SubscriptionViewModel | 多行 TextField 编辑 YAML，保存前 mihomo -t 校验，失败回滚       |
 | AboutScreen              | —                     | 版本信息（hero 图标 + 3 阶段视差 + OS3 动态背景）               |
 | SubscriptionAddScreen    | —                     | 添加方式选择（文件/URL/QR Code）                                |
@@ -437,6 +440,8 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 - **TextField 表单**：不包 Card，直接 `padding(horizontal = 12.dp).padding(bottom = 12.dp)`
 - **Edit Dialog 按钮顺序**：`not_modified | cancel | confirm`（三按钮 weight(1f) + `spacedBy(8.dp)`），confirm 用 `ButtonDefaults.textButtonColorsPrimary()`
 - **长内容 Dialog 滚动 + 按钮固定底部**：miuix `WindowDialog` 手机上不限 content 高度，过长会把底部按钮顶出屏。包 `Column(Modifier.heightIn(max = 500.dp))` 限高，滚动区 `Modifier.weight(1f, fill = false).verticalScroll(...)`（短内容自然收缩），按钮作为非加权子项固定底部。范例：[MetaSettingsScreen](app/src/main/kotlin/top/yukonga/mishka/ui/screen/settings/MetaSettingsScreen.kt) 的 Age 密钥对 Dialog
+- **选项列表 Dialog**（入口行点击弹出、内含若干操作行）：`WindowDialog` + `insideMargin = DpSize(0.dp, 24.dp)`——水平 0 让 `ArrowPreference` 操作行全出血（涟漪铺满对话框整宽），行自带 `insideMargin = PaddingValues(horizontal = 24.dp, vertical = 12.dp)` 内缩；垂直 24 补内置 title 的顶距与底部留白（miuix 的 title/summary/content 全包在 insideMargin 内，内置 title 自身仅 `bottom 12dp`，垂直置 0 会贴顶）。操作行可带 `startAction` 图标（`Modifier.padding(end = 16.dp)`）；底部按钮补 `horizontal = 24.dp` 与行内容对齐。内容超长时与上一条「长内容 Dialog」模式**组合**使用（WebDAV Dialog 即两者叠加）。范例：[BackupRestoreScreen](app/src/main/kotlin/top/yukonga/mishka/ui/screen/settings/BackupRestoreScreen.kt) 的本地备份 / WebDAV Dialog
+- **弹 Dialog 的入口行设 holdDownState**：`ArrowPreference(holdDownState = showXxxDialog, onClick = { showXxxDialog = true })`——对应 dialog 打开期间入口行保持按下态（MIUI 交互惯例）。仅适用于「入口行可见期间弹层存在」的场景；操作行先关闭自身再弹下一层（如恢复确认）时无按下态窗口，不设
 - **用户反馈**：`platform.showToast(message, long = false)`——轻量操作结果提示
 - **i18n**：所有用户字符串走 `stringResource(R.string.xxx)`（Composable）/ `context.getString(R.string.xxx)`（非 Composable），禁止硬编码；新增同时加 `res/values` + `res/values-zh-rCN`。key 命名 `{页面}_{描述}`，通用按钮 `common_` 前缀。日志消息英文，代码注释中文
 - **语义色 token**：状态/延迟/按钮/错误色统一走 `ui.theme.StatusColors`（`runState`/`delay`/`actionButton`/`danger`/`healthy`/`warning`/`neutral`/`selectedNodeContainer`）。**禁止屏幕里散落 `Color(0xFF...)`**；合法颜色源仅 `MiuixTheme.colorScheme.*` 与 `StatusColors`

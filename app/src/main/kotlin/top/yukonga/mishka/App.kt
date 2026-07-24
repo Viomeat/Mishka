@@ -20,6 +20,7 @@ import top.yukonga.mishka.ui.theme.ThemeAccentColor
 import top.yukonga.mishka.ui.theme.ThemeConfig
 import top.yukonga.mishka.ui.theme.resolveIsDark
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
+import top.yukonga.mishka.viewmodel.BackupViewModel
 import top.yukonga.mishka.viewmodel.ConnectionViewModel
 import top.yukonga.mishka.viewmodel.DnsQueryViewModel
 import top.yukonga.mishka.viewmodel.ExternalControlViewModel
@@ -64,6 +65,8 @@ fun App(
     hasRootPermission: Boolean = false,
     deepLinkImport: DeepLinkImportRequest? = null,
     onDeepLinkImportConsumed: () -> Unit = {},
+    backupViewModel: BackupViewModel? = null,
+    onRestartApp: () -> Unit = {},
 ) {
     val colorSchemeMode = when {
         !themeConfig.useMonet && themeConfig.colorMode == 1 -> ColorSchemeMode.Light
@@ -146,6 +149,8 @@ fun App(
                 hasRootPermission = hasRootPermission,
                 deepLinkImport = deepLinkImport,
                 onDeepLinkImportConsumed = onDeepLinkImportConsumed,
+                backupViewModel = backupViewModel,
+                onRestartApp = onRestartApp,
             )
         }
     }

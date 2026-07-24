@@ -3,6 +3,7 @@ package top.yukonga.mishka.di
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import top.yukonga.mishka.data.backup.BackupManager
 import top.yukonga.mishka.data.database.getAppDatabase
 import top.yukonga.mishka.platform.AppListProvider
 import top.yukonga.mishka.platform.BootStartManager
@@ -21,4 +22,5 @@ val androidPlatformModule: Module = module {
     single { AppListProvider(androidContext()) }
     single { WifiPolicyController(androidContext()) }
     single { BootStartManager(androidContext()) }
+    single { BackupManager(androidContext(), get(), get(), get(), get(), get()) }
 }

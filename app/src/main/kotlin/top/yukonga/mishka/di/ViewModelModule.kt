@@ -4,6 +4,7 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 import top.yukonga.mishka.domain.repository.SubscriptionRepository
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
+import top.yukonga.mishka.viewmodel.BackupViewModel
 import top.yukonga.mishka.viewmodel.ConnectionViewModel
 import top.yukonga.mishka.viewmodel.DnsQueryViewModel
 import top.yukonga.mishka.viewmodel.ExternalControlViewModel
@@ -46,4 +47,5 @@ val viewModelModule = module {
     single { ProviderViewModel() }
     single { ConnectionViewModel() }
     single { DnsQueryViewModel() }
+    single { BackupViewModel(get(), get(), androidContext()) }
 }

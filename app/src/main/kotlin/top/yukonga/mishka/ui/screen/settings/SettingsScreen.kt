@@ -51,6 +51,7 @@ fun SettingsScreen(
     onNavigateWifiPolicy: () -> Unit = {},
     onNavigateThemeSettings: () -> Unit = {},
     onNavigateFileManager: () -> Unit = {},
+    onNavigateBackup: () -> Unit = {},
     onNavigateAbout: () -> Unit = {},
     bootStartManager: BootStartManager? = null,
     storage: PlatformStorage? = null,
@@ -206,6 +207,13 @@ fun SettingsScreen(
                                 title = stringResource(R.string.settings_file_manager),
                                 summary = stringResource(R.string.settings_file_manager_summary),
                                 onClick = onNavigateFileManager,
+                            )
+                        })
+                        add(CardItem("backup") {
+                            ArrowPreference(
+                                title = stringResource(R.string.settings_backup),
+                                summary = stringResource(R.string.settings_backup_summary),
+                                onClick = onNavigateBackup,
                             )
                         })
                     },

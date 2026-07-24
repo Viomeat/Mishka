@@ -233,7 +233,8 @@ object ProfileFileOps {
 
     // === GeoIP 共享管理 ===
 
-    private val GEODATA_FILES = listOf(
+    // internal：WebDAV 备份（BackupManager）复用此名单排除订阅目录里的 GeoIP 链接/拷贝
+    internal val GEODATA_FILES = listOf(
         "geoip.metadb",
         "Country.mmdb", "country.mmdb",
         "geoip.dat", "GeoIP.dat",

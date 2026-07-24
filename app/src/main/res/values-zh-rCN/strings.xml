@@ -486,6 +486,37 @@
     <string name="settings_file_manager">文件管理</string>
     <string name="settings_file_manager_summary">浏览并编辑已导入订阅的文件</string>
 
+    <!-- WebDAV Backup & Restore -->
+    <string name="settings_backup">备份与恢复</string>
+    <string name="settings_backup_summary">本地文件或 WebDAV 备份与恢复</string>
+    <string name="backup_title">备份与恢复</string>
+    <string name="backup_hint">将订阅、覆写与偏好设置打包备份到 WebDAV 服务器；恢复会覆盖本地数据。</string>
+    <string name="backup_server_url">服务器地址</string>
+    <string name="backup_username">用户名</string>
+    <string name="backup_password">密码</string>
+    <string name="backup_test_connection">测试连接</string>
+    <string name="backup_now">备份到 WebDAV</string>
+    <string name="backup_restore_now">从 WebDAV 恢复</string>
+    <string name="backup_missing_credentials">请先填写服务器地址、用户名和密码</string>
+    <string name="backup_connection_ok">连接成功</string>
+    <string name="backup_done">备份完成</string>
+    <string name="backup_not_found">服务器上没有找到备份</string>
+    <string name="backup_stop_proxy_first">请先停止代理再执行恢复</string>
+    <string name="backup_failed">操作失败: %1$s</string>
+    <string name="backup_restore_confirm_title">恢复备份</string>
+    <string name="backup_restore_confirm_summary">将用服务器上的备份覆盖本地订阅与设置，此操作无法撤销。是否继续？</string>
+    <string name="backup_restore_done_title">恢复完成</string>
+    <string name="backup_restore_done_summary">需要重启应用以加载恢复后的数据。</string>
+    <string name="backup_restart_now">立即重启</string>
+    <string name="backup_section_local">本地备份</string>
+    <string name="backup_export_local">备份到文件</string>
+    <string name="backup_restore_local">从文件恢复</string>
+    <string name="backup_export_done">备份文件已保存</string>
+    <string name="backup_local_save_failed">写入备份文件失败</string>
+    <string name="backup_section_webdav">WebDAV</string>
+    <string name="backup_local_row_summary">备份到文件或从文件恢复</string>
+    <string name="backup_webdav_row_summary">备份到 WebDAV 服务器或从中恢复</string>
+
     <!-- About -->
     <string name="about_title">关于</string>
     <string name="about_info">信息</string>

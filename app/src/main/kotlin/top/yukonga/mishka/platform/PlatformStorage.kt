@@ -93,6 +93,11 @@ object StorageKeys {
 
     // 一次性迁移标记
     const val MIGRATION_ROOT_RECLAIM_DONE = "migration_root_reclaim_done"
+
+    // WebDAV 备份
+    const val WEBDAV_URL = "webdav_url"
+    const val WEBDAV_USERNAME = "webdav_username"
+    const val WEBDAV_PASSWORD = "webdav_password"
 }
 
 class PlatformStorage(context: Context) {
@@ -112,4 +117,7 @@ class PlatformStorage(context: Context) {
     fun putStringSet(key: String, value: Set<String>) {
         prefs.edit { putStringSet(key, value) }
     }
+
+    /** 全量导出（WebDAV 备份用）；Mishka 只写 String / Set<String> 两种类型。 */
+    fun dumpAll(): Map<String, Any?> = prefs.all
 }

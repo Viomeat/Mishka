@@ -19,4 +19,10 @@ interface PendingDao {
 
     @Query("DELETE FROM pending WHERE uuid = :uuid")
     suspend fun remove(uuid: String)
+
+    @Query("SELECT * FROM pending ORDER BY createdAt")
+    suspend fun queryAll(): List<PendingEntity>
+
+    @Query("DELETE FROM pending")
+    suspend fun clearAll()
 }

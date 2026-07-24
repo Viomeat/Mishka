@@ -171,6 +171,12 @@ class MainActivity : ComponentActivity() {
         serviceController.setVpnPermissionLauncher(vpnPermissionLauncher)
         filePicker = FilePicker(this)
         val wifiPolicyController: WifiPolicyController = get()
+        // Wi-Fi 策略 reconcile：备份恢复/force-stop 后 pref 与组件位、服务状态脱节，按 pref 幂等拉起
+        if (storage.getString(StorageKeys.WIFI_POLICY_ENABLED, "false") == "true" &&
+            wifiPolicyController.hasRequiredPermission()
+        ) {
+            wifiPolicyController.startMonitor()
+        }
         // 代理组图标下载走 mihomo mixed-port（Mishka 自身绕过 TUN，直连境外图标 CDN 极慢）；
         // 不受订阅走代理开关约束，代理运行中即生效
         val iconProxyResolver: SubscriptionProxyResolver = get()
@@ -267,8 +273,21 @@ class MainActivity : ComponentActivity() {
                 },
                 deepLinkImport = pendingDeepLinkImport.value,
                 onDeepLinkImportConsumed = { pendingDeepLinkImport.value = null },
+                backupViewModel = get(),
+                onRestartApp = { restartApplication() },
             )
         }
+    }
+
+    // WebDAV 恢复后重启进程：OverrideJsonStore / Repository Flow 等内存态不随磁盘恢复刷新，
+    // 冷启动重建是唯一可靠的加载路径
+    private fun restartApplication() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        startActivity(intent)
+        finishAffinity()
+        Runtime.getRuntime().exit(0)
     }
 
     override fun onNewIntent(intent: Intent) {

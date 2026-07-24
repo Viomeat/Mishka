@@ -32,4 +32,10 @@ interface ImportedDao {
 
     @Query("SELECT COUNT(*) FROM imported")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM imported ORDER BY createdAt")
+    suspend fun queryAll(): List<ImportedEntity>
+
+    @Query("DELETE FROM imported")
+    suspend fun clearAll()
 }

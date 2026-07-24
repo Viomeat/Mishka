@@ -168,6 +168,12 @@ class ProfileProcessor(
         suspend fun cleanupResidual(fileManager: ProfileFileManager) = processLock.withLock {
             fileManager.cleanupProcessing()
         }
+
+        /**
+         * 以进程级锁独占执行 [block]。WebDAV 备份/恢复用：备份读取 imported/ 期间不能有
+         * commit 改写目录，恢复覆盖 imported/ + DB 期间不能有任何导入管线在跑。
+         */
+        suspend fun <T> withProcessLock(block: suspend () -> T): T = processLock.withLock { block() }
     }
 }
 
