@@ -186,7 +186,7 @@ files/mihomo/
 | Screen                   | ViewModel             | 说明                                                            |
 | ------------------------ | --------------------- | --------------------------------------------------------------- |
 | HomeScreen               | HomeViewModel         | 状态/ActionButtons/NetworkInfo/QuickEntries/Latency/BottomCards |
-| ProxyScreen              | ProxyViewModel        | 代理组 Tab + 节点选择 + 延迟测试 + 选择记忆                     |
+| ProxyScreen              | ProxyViewModel        | 代理组 Tab + 节点选择 + 延迟测试 + 选择记忆 + 节点排序/全宽排布 |
 | SubscriptionScreen       | SubscriptionViewModel | 订阅列表 + 增删改 + 全部更新 + 编辑 + 复制（可取消 Pipeline）   |
 | SubscriptionEditScreen   | SubscriptionViewModel | 编辑名称/URL/更新间隔                                           |
 | SettingsScreen           | —                     | 设置入口（TUN 模式/主题/开机自启）                              |
@@ -435,7 +435,7 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
   - **分角背景**：有圆角的首/末段 `squircleSurface`（fill+clip，**必须 clip**——否则段内 clickable 的方角涟漪溢出圆角）；中间段纯 `background`（无 offscreen layer 最省）。语义对齐 miuix `Card`（surfaceContainer + onSurfaceContainer + 16.dp 圆角；preference 自带内边距故段 `insidePadding=0`）
   - `outerBottomPadding` 按所替换 Card 的 bottom padding 传（6/12/0）；条件行用 `buildList { if (…) add(CardItem…) }`
   - `groupedCardItems` **不加 item 动画**（拆分是不可见的纯性能优化）；需要动画自行在 item 内 `Modifier.animateItem(...)`，**placement spec 不能设 null**——否则下方各组硬跳、无展开感
-  - **ProxyScreen 特例**：展开状态从 item 内 `rememberSaveable` 上提到屏幕级 `SnapshotStateList`（节点行是顶层 lazy item，随展开动态增删，存 item 内会随销毁丢失）；组头段 + 每行 ≤2 节点段拼卡，排序/分行在内容 lambda 完成；组头与节点行都用 `Modifier.animateItem()` 替代 `AnimatedVisibility(expandVertically)`（一次性组合整组才是卡顿源）；组头底角随展开 `16.dp↔0.dp` 走 `animateDpAsState(tween(300))` 经 `CardSegment.bottomCornerRadius` 覆写——否则随 `isLast` 翻转瞬间圆↔方突变
+  - **ProxyScreen 特例**：展开状态从 item 内 `rememberSaveable` 上提到屏幕级 `SnapshotStateList`（节点行是顶层 lazy item，随展开动态增删，存 item 内会随销毁丢失）；组头段 + 每行 ≤2 节点段（`PROXY_NODE_FULL_WIDTH` 开启时每行 1 个铺满）拼卡；节点名两种排布都不省略号截断，走 `basicMarquee(iterations = Int.MAX_VALUE)` 滚动 + `weight(1f, fill = false)` 让短名保持自然宽（marquee 仅在内容超容器时才动，短名零开销），排序/分行在内容 lambda 完成；组头与节点行都用 `Modifier.animateItem()` 替代 `AnimatedVisibility(expandVertically)`（一次性组合整组才是卡顿源）；组头底角随展开 `16.dp↔0.dp` 走 `animateDpAsState(tween(300))` 经 `CardSegment.bottomCornerRadius` 覆写——否则随 `isLast` 翻转瞬间圆↔方突变
   - **不适用**：纯静态文本卡（ExternalControl 提示卡、RootSettings 警告卡）与视差 + `textureBlur` 的 AboutScreen 保持单 `item { Card }`；AboutScreen 内容 Column 用 `heightIn(min = 视口高)` 而非 `fillParentMaxHeight()`——后者钉死恰好一屏，横屏矮视口下超出内容被裁且无法滚动
 - **TextField 表单**：不包 Card，直接 `padding(horizontal = 12.dp).padding(bottom = 12.dp)`
 - **Edit Dialog 按钮顺序**：`not_modified | cancel | confirm`（三按钮 weight(1f) + `spacedBy(8.dp)`），confirm 用 `ButtonDefaults.textButtonColorsPrimary()`

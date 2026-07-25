@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,6 +100,7 @@ fun ProxyScreen(
 ) {
     val uiState = viewModel?.uiState?.collectAsStateWithLifecycle()?.value ?: ProxyUiState()
     val sortOption = viewModel?.sortOption?.collectAsStateWithLifecycle()?.value ?: 0
+    val fullWidthNodes = viewModel?.fullWidthNodes?.collectAsStateWithLifecycle()?.value == true
     val scrollBehavior = MiuixScrollBehavior()
     val groups = uiState.groups
 
@@ -212,10 +214,20 @@ fun ProxyScreen(
                                 ) {
                                     ListPopupColumn {
                                         DropdownImpl(
-                                            text = stringResource(R.string.proxy_refresh_icon),
-                                            optionSize = 1,
-                                            isSelected = false,
+                                            text = stringResource(R.string.proxy_node_full_width),
+                                            optionSize = 2,
+                                            isSelected = fullWidthNodes,
                                             index = 0,
+                                            onSelectedIndexChange = {
+                                                viewModel?.updateFullWidthNodes(!fullWidthNodes)
+                                                showPopup.value = false
+                                            },
+                                        )
+                                        DropdownImpl(
+                                            text = stringResource(R.string.proxy_refresh_icon),
+                                            optionSize = 2,
+                                            isSelected = false,
+                                            index = 1,
                                             onSelectedIndexChange = {
                                                 coroutineScope.launch { IconLoader.clear() }
                                                 iconCacheVersion++
@@ -270,7 +282,8 @@ fun ProxyScreen(
                     groups.forEach { group ->
                         val isExpanded = group.name in expandedGroups
                         val rows = if (isExpanded) {
-                            sortNodes(group.all, group.delays, sortOption).chunked(2)
+                            sortNodes(group.all, group.delays, sortOption)
+                                .chunked(if (fullWidthNodes) 1 else 2)
                         } else {
                             emptyList()
                         }
@@ -323,6 +336,7 @@ fun ProxyScreen(
                                         ProxyNodeRow(
                                             row = row,
                                             group = group,
+                                            fillRow = fullWidthNodes,
                                             testingNodes = uiState.testingNodes,
                                             onTestNodeDelay = { nodeName ->
                                                 viewModel?.testNodeDelay(nodeName)
@@ -506,11 +520,13 @@ private fun DefaultGroupIcon(name: String) {
     }
 }
 
-// 一行 ≤2 个节点，是节点网格的独立 lazy item 单元；排序/分行在 LazyColumn 内容 lambda 完成
+// 一行 ≤2 个节点（fillRow 时每行 1 个铺满宽度），是节点网格的独立 lazy item 单元；
+// 排序/分行在 LazyColumn 内容 lambda 完成
 @Composable
 private fun ProxyNodeRow(
     row: List<String>,
     group: ProxyGroupUi,
+    fillRow: Boolean = false,
     testingNodes: ImmutableSet<String> = persistentSetOf(),
     onTestNodeDelay: (String) -> Unit = {},
     onSelect: (String) -> Unit,
@@ -537,7 +553,8 @@ private fun ProxyNodeRow(
                 modifier = Modifier.weight(1f),
             )
         }
-        if (row.size == 1) {
+        // 两列排布下最后一行只有 1 个节点时补空位，避免它被拉伸成整行宽
+        if (!fillRow && row.size == 1) {
             Spacer(Modifier.weight(1f))
         }
     }
@@ -590,14 +607,17 @@ private fun ProxyNodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // 节点名不截断：超出可用宽度时走跑马灯滚动，短名保持原宽（fill = false）
                 Text(
                     text = name,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.onSurface,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    softWrap = false,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .basicMarquee(iterations = Int.MAX_VALUE),
                 )
                 Spacer(Modifier.width(6.dp))
                 Box(

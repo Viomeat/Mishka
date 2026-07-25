@@ -163,6 +163,7 @@
     <string name="proxy_no_groups">No proxy groups</string>
     <string name="proxy_start_first">Please start the proxy service first</string>
     <string name="proxy_refresh_icon">Refresh Icons</string>
+    <string name="proxy_node_full_width">Full-width Cards</string>
     <string name="proxy_timeout">Timeout</string>
     <string name="proxy_sort_title">Sort</string>
     <string name="proxy_sort_default">Default</string>

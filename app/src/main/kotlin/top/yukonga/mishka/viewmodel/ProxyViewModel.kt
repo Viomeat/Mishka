@@ -56,6 +56,10 @@ class ProxyViewModel(
     private val _sortOption = MutableStateFlow(loadInitialSortOption())
     val sortOption: StateFlow<Int> = _sortOption.asStateFlow()
 
+    // 节点卡片单列全宽排布，长节点名两列排布下会被截断
+    private val _fullWidthNodes = MutableStateFlow(loadInitialFullWidthNodes())
+    val fullWidthNodes: StateFlow<Boolean> = _fullWidthNodes.asStateFlow()
+
     private var repository: MihomoRepository? = null
 
     // mihomo 重启切 client 时取消旧的 loadProxies 协程，防止其 HTTP 响应已读完但 UI 写回
@@ -73,6 +77,14 @@ class ProxyViewModel(
 
     private fun loadInitialSortOption(): Int =
         storage?.getString(StorageKeys.PROXY_NODE_SORT_OPTION, "0")?.toIntOrNull() ?: 0
+
+    fun updateFullWidthNodes(enabled: Boolean) {
+        _fullWidthNodes.value = enabled
+        storage?.putString(StorageKeys.PROXY_NODE_FULL_WIDTH, if (enabled) "true" else "false")
+    }
+
+    private fun loadInitialFullWidthNodes(): Boolean =
+        storage?.getString(StorageKeys.PROXY_NODE_FULL_WIDTH, "false") == "true"
 
     fun setRepository(repo: MihomoRepository?) {
         loadJob?.cancel()
