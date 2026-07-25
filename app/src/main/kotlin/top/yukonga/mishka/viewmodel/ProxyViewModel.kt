@@ -106,6 +106,7 @@ class ProxyViewModel(
             val groupsResult = repo.getGroups()
             val proxiesResult = repo.getProxies()
             val providersResult = repo.getProviders()
+            val mode = repo.getConfig().getOrNull()?.mode?.lowercase().orEmpty()
             // 协程被 cancel 后 HTTP 响应仍可能已读完，二次校验 repo identity 防止把旧 client
             // 的结果写到当前 repo 已切换后的 UI
             if (repository !== repo) return@launch
@@ -126,14 +127,22 @@ class ProxyViewModel(
                 }
                 nodeProviderMap = providerOf
 
-                val globalGroup = groupsResponse.proxies.firstOrNull { it.name == "GLOBAL" }
+                val globalGroup = groupsResponse.proxies.firstOrNull { it.name == GLOBAL_GROUP }
                 val orderMap = globalGroup?.all
                     ?.mapIndexed { index, name -> name to index }
                     ?.toMap() ?: emptyMap()
 
-                val groups = groupsResponse.proxies
-                    .filter { it.name != "GLOBAL" }
+                // GLOBAL 常驻列表：全局模式置顶（此时它是唯一生效的出口），其余模式沉底
+                val orderedGroups = groupsResponse.proxies
+                    .filter { it.name != GLOBAL_GROUP }
                     .sortedBy { orderMap[it.name] ?: Int.MAX_VALUE }
+                val arrangedGroups = when {
+                    globalGroup == null -> orderedGroups
+                    mode == MODE_GLOBAL -> listOf(globalGroup) + orderedGroups
+                    else -> orderedGroups + globalGroup
+                }
+
+                val groups = arrangedGroups
                     .map { node ->
                         val delays = mutableMapOf<String, Int>()
                         val nodeTypes = mutableMapOf<String, String>()
@@ -270,5 +279,10 @@ class ProxyViewModel(
         }
 
         _uiState.value = _uiState.value.copy(groups = updatedGroups.toPersistentList())
+    }
+
+    private companion object {
+        const val GLOBAL_GROUP = "GLOBAL"
+        const val MODE_GLOBAL = "global"
     }
 }

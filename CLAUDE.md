@@ -323,6 +323,8 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 
 **`/proxies` 不含 provider 节点**：mihomo 的 `GET /proxies` 与 `findProxyByName` 中间件（`/proxies/{name}`、`/proxies/{name}/delay`）只覆盖 runtime proxies（`proxies:` 段节点 + 代理组），proxy-provider 节点在这套命名空间里**查不到 / 404**。消费方规则：节点详情（type / 延迟 history）需把 `/providers/proxies` 各 provider 的 `proxies` 合并进 `/proxies` 结果（runtime 优先补缺，[ProxyViewModel.loadProxies](app/src/main/kotlin/top/yukonga/mishka/viewmodel/ProxyViewModel.kt) 维护 `nodeProviderMap`）；provider 节点的单节点测速走 `GET /providers/proxies/{provider}/{node}/healthcheck`（`MihomoApiClient.getProviderProxyDelay`），组测速 `/group/{name}/delay` 与组选择 `PUT /proxies/{group}` 不受影响。仅 provider 型（模板）订阅命中此约束，常规订阅节点本就在 runtime 命名空间。
 
+**GLOBAL 组常驻代理页**：mihomo `GET /group` 的返回里 GLOBAL 与普通代理组同级（Selector 类型），`ProxyViewModel.loadProxies` 既拿它的 `all` 当组排序基准，也把它本身排进列表——`mode == "global"` 时置顶（此时它是唯一生效出口），其余模式沉底。mode 从 `GET /configs` 现取（`switchMode` 写 override 后必 restart → `MihomoConnectionManager` 重建 repo → `setRepository` → `loadProxies`，位置自然跟随；不需要额外订阅 mode 变化）。GLOBAL 是 Selector，选择记忆（`SelectionDao`）与延迟测试对它自动生效。
+
 **CMFA embed mode 禁 HTTP 配置 API**：`PATCH/PUT /configs` / `POST /restart` / `POST /configs/geo` / `PUT/PATCH /rules` / `POST /upgrade` 全部 404。**绝不添加** `patchConfig`/`restart` 方法，所有配置修改走 `OverrideJsonStore.update { ... }` + `serviceController.restart()`，UI 用 `RestartRequiredHint` Card 提示。
 
 **订阅导入走 JNI in-process**：fetch + provider prefetch + Parse 三步走 [MishkaCoreBridge.fetchAndValid](app/src/main/kotlin/top/yukonga/mishka/data/bridge/MishkaCoreBridge.kt)，禁止再起 mihomo 子进程做这些事。`MishkaApplication.onCreate` 必须先 `extractGeoFiles()` 再 `MishkaCoreBridge.init(geodataDir, userAgent)`——后者 `constant.SetHomeDir` 必须指向已就位的 GeoIP 目录。runtime 仍是 subprocess 路径，与 JNI 路径互不干扰
