@@ -1,7 +1,11 @@
 package top.yukonga.mishka.ui.screen.proxy
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,8 +27,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,24 +45,30 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.R
 import top.yukonga.mishka.ui.component.AdaptiveTopAppBar
@@ -91,6 +105,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.window.WindowListPopup
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ProxyScreen(
@@ -100,7 +116,20 @@ fun ProxyScreen(
 ) {
     val uiState = viewModel?.uiState?.collectAsStateWithLifecycle()?.value ?: ProxyUiState()
     val sortOption = viewModel?.sortOption?.collectAsStateWithLifecycle()?.value ?: 0
-    val fullWidthNodes = viewModel?.fullWidthNodes?.collectAsStateWithLifecycle()?.value == true
+    val singleColumn = viewModel?.singleColumn?.collectAsStateWithLifecycle()?.value == true
+    // 0 = 行内两列并排，1 = 行内竖排
+    val singleColumnProgress = animateFloatAsState(
+        targetValue = if (singleColumn) 1f else 0f,
+        animationSpec = tween(300),
+        label = "singleColumnProgress",
+    )
+    // 用布尔标记：直接读进度会让整屏每帧重组
+    var singleColumnAnimating by remember { mutableStateOf(false) }
+    LaunchedEffect(singleColumn) {
+        singleColumnAnimating = true
+        delay(300.milliseconds)
+        singleColumnAnimating = false
+    }
     val scrollBehavior = MiuixScrollBehavior()
     val groups = uiState.groups
 
@@ -116,6 +145,52 @@ fun ProxyScreen(
             restore = { it.toMutableStateList() },
         ),
     ) { mutableStateListOf<String>() }
+
+    // 展开/收起进度（per 组，1 = 完全展开）。收起先跑动画再从 expandedGroups 摘除，期间靠
+    // retainedGroups 保住行 item——变成 disappearing item 就会脱离布局在原位淡出，与上移的下方内容穿插
+    val expandProgress = remember { mutableMapOf<String, MutableFloatState>() }
+    val retainedGroups = remember { mutableStateListOf<String>() }
+    val animatingGroups = remember { mutableStateListOf<String>() }
+    val expandJobs = remember { mutableMapOf<String, Job>() }
+
+    // 动画期间关掉 placement：行高收缩已连续，再叠一层 spring 追赶会让行与行拖影不同步
+    val defaultPlacementSpec = remember {
+        spring(
+            stiffness = Spring.StiffnessMediumLow,
+            visibilityThreshold = IntOffset.VisibilityThreshold,
+        )
+    }
+    val itemPlacementSpec = if (animatingGroups.isNotEmpty() || singleColumnAnimating) {
+        null
+    } else {
+        defaultPlacementSpec
+    }
+
+    fun toggleGroup(name: String) {
+        val progress = expandProgress.getOrPut(name) {
+            mutableFloatStateOf(if (name in expandedGroups) 1f else 0f)
+        }
+        val expanding = name !in expandedGroups
+        expandJobs[name]?.cancel()
+        if (expanding) {
+            retainedGroups.remove(name)
+            expandedGroups.add(name)
+        } else {
+            expandedGroups.remove(name)
+            if (name !in retainedGroups) retainedGroups.add(name)
+        }
+        if (name !in animatingGroups) animatingGroups.add(name)
+        expandJobs[name] = coroutineScope.launch {
+            animate(
+                initialValue = progress.floatValue,
+                targetValue = if (expanding) 1f else 0f,
+                animationSpec = tween(300),
+            ) { value, _ -> progress.floatValue = value }
+            // 被打断时不执行，清理交给接手的新动画
+            if (!expanding) retainedGroups.remove(name)
+            animatingGroups.remove(name)
+        }
+    }
 
     val backdrop = rememberBlurBackdrop()
     val blurActive = backdrop != null
@@ -214,12 +289,12 @@ fun ProxyScreen(
                                 ) {
                                     ListPopupColumn {
                                         DropdownImpl(
-                                            text = stringResource(R.string.proxy_node_full_width),
+                                            text = stringResource(R.string.proxy_single_column),
                                             optionSize = 2,
-                                            isSelected = fullWidthNodes,
+                                            isSelected = singleColumn,
                                             index = 0,
                                             onSelectedIndexChange = {
-                                                viewModel?.updateFullWidthNodes(!fullWidthNodes)
+                                                viewModel?.updateSingleColumn(!singleColumn)
                                                 showPopup.value = false
                                             },
                                         )
@@ -281,24 +356,26 @@ fun ProxyScreen(
                     // 每组展平为「组头段 + 每行节点段」独立 lazy item；展开时只组合可见节点行，避免一次性组合整组造成卡顿
                     groups.forEach { group ->
                         val isExpanded = group.name in expandedGroups
-                        val rows = if (isExpanded) {
-                            sortNodes(group.all, group.delays, sortOption)
-                                .chunked(if (fullWidthNodes) 1 else 2)
+                        // 收起动画未跑完的组仍产出行 item，靠行高收缩表达收起
+                        val rowsPresent = isExpanded || group.name in retainedGroups
+                        // 恒按 2 个分行：行数与 key 不随单列开关变化，morph 全在行内部
+                        val rows = if (rowsPresent) {
+                            sortNodes(group.all, group.delays, sortOption).chunked(2)
                         } else {
                             emptyList()
                         }
 
                         item(key = "group:${group.name}", contentType = "proxy_group_header") {
-                            // 组头底角随展开在 16↔0 间动画，避免 isLast 随 rows 翻转导致圆角突变
+                            // 按目标态动画才能与行高收缩同步；跟 rowsPresent 会滞后整段收起时长
                             val headerBottomCorner by animateDpAsState(
-                                targetValue = if (rows.isEmpty()) 16.dp else 0.dp,
+                                targetValue = if (isExpanded) 0.dp else 16.dp,
                                 animationSpec = tween(300),
                                 label = "groupHeaderBottomCorner",
                             )
                             CardSegment(
                                 isFirst = true,
-                                isLast = rows.isEmpty(),
-                                modifier = Modifier.animateItem(),
+                                isLast = !isExpanded,
+                                modifier = Modifier.animateItem(placementSpec = itemPlacementSpec),
                                 bottomCornerRadius = headerBottomCorner,
                                 outerTopPadding = 12.dp,
                             ) {
@@ -308,16 +385,15 @@ fun ProxyScreen(
                                     iconCacheVersion = iconCacheVersion,
                                     isTesting = group.name in uiState.testingGroups,
                                     onTestDelay = { viewModel?.testGroupDelay(group.name) },
-                                    onToggle = {
-                                        if (isExpanded) expandedGroups.remove(group.name)
-                                        else expandedGroups.add(group.name)
-                                    },
+                                    onToggle = { toggleGroup(group.name) },
                                 )
                             }
                         }
 
                         if (rows.isNotEmpty()) {
                             val lastRowIndex = rows.lastIndex
+                            val rowCount = rows.size
+                            val groupExpandProgress = expandProgress[group.name]
                             rows.forEachIndexed { rowIndex, row ->
                                 item(
                                     key = "nodes:${group.name}:$rowIndex",
@@ -326,17 +402,22 @@ fun ProxyScreen(
                                     CardSegment(
                                         isFirst = false,
                                         isLast = rowIndex == lastRowIndex,
-                                        modifier = Modifier.animateItem(),
+                                        modifier = Modifier
+                                            .animateItem(placementSpec = itemPlacementSpec)
+                                            .clipToBounds(),
+                                        // 底距交给行内 Layout 一起收缩，否则收完残留一条 12dp 底色
                                         insidePadding = PaddingValues(
                                             start = 12.dp,
                                             end = 12.dp,
-                                            bottom = 12.dp,
                                         ),
                                     ) {
                                         ProxyNodeRow(
                                             row = row,
                                             group = group,
-                                            fillRow = fullWidthNodes,
+                                            singleColumnProgress = singleColumnProgress,
+                                            expandProgress = groupExpandProgress,
+                                            rowIndex = rowIndex,
+                                            rowCount = rowCount,
                                             testingNodes = uiState.testingNodes,
                                             onTestNodeDelay = { nodeName ->
                                                 viewModel?.testNodeDelay(nodeName)
@@ -520,42 +601,77 @@ private fun DefaultGroupIcon(name: String) {
     }
 }
 
-// 一行 ≤2 个节点（fillRow 时每行 1 个铺满宽度），是节点网格的独立 lazy item 单元；
-// 排序/分行在 LazyColumn 内容 lambda 完成
+// 竖排间距对齐段间 bottom padding，让单列态与两列态视觉一致
+private val NodeRowHorizontalGap = 8.dp
+private val NodeRowVerticalGap = 12.dp
+private val NodeRowBottomPadding = 12.dp
+
+// 一行恒定 ≤2 个节点，是节点网格的独立 lazy item 单元；排序/分行在 LazyColumn 内容 lambda 完成。
+// 单列切换不改分行而由本行 Layout 插值——两个节点同处一个 layout scope 才能连续过渡。
 @Composable
 private fun ProxyNodeRow(
     row: List<String>,
     group: ProxyGroupUi,
-    fillRow: Boolean = false,
+    singleColumnProgress: State<Float>,
+    expandProgress: FloatState?,
+    rowIndex: Int,
+    rowCount: Int,
     testingNodes: ImmutableSet<String> = persistentSetOf(),
     onTestNodeDelay: (String) -> Unit = {},
     onSelect: (String) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        row.forEach { proxyName ->
-            val isSelected = proxyName == group.now
-            val delay = group.delays[proxyName]
-            val nodeType = group.nodeTypes[proxyName] ?: ""
-            val isSelectable = group.type.lowercase() == "selector"
+    Layout(
+        content = {
+            row.forEach { proxyName ->
+                val isSelected = proxyName == group.now
+                val delay = group.delays[proxyName]
+                val nodeType = group.nodeTypes[proxyName] ?: ""
+                val isSelectable = group.type.lowercase() == "selector"
 
-            ProxyNodeCard(
-                name = proxyName,
-                type = nodeType,
-                delay = delay,
-                isSelected = isSelected,
-                isSelectable = isSelectable,
-                isTesting = proxyName in testingNodes,
-                onTestDelay = { onTestNodeDelay(proxyName) },
-                onClick = { onSelect(proxyName) },
-                modifier = Modifier.weight(1f),
-            )
+                ProxyNodeCard(
+                    name = proxyName,
+                    type = nodeType,
+                    delay = delay,
+                    isSelected = isSelected,
+                    isSelectable = isSelectable,
+                    isTesting = proxyName in testingNodes,
+                    onTestDelay = { onTestNodeDelay(proxyName) },
+                    onClick = { onSelect(proxyName) },
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        // 两个进度都在 measure 阶段读：动画帧只重测量本行，不重组节点卡片
+        val fraction = singleColumnProgress.value
+        val rowWidth = constraints.maxWidth
+        val horizontalGap = NodeRowHorizontalGap.roundToPx()
+        val verticalGap = NodeRowVerticalGap.roundToPx()
+        val halfWidth = (rowWidth - horizontalGap) / 2
+        val cellWidth = lerp(halfWidth, rowWidth, fraction)
+
+        val placeables = measurables.map {
+            it.measure(constraints.copy(minWidth = cellWidth, maxWidth = cellWidth))
         }
-        // 两列排布下最后一行只有 1 个节点时补空位，避免它被拉伸成整行宽
-        if (!fillRow && row.size == 1) {
-            Spacer(Modifier.weight(1f))
+        val first = placeables.firstOrNull()
+        val second = placeables.getOrNull(1)
+
+        // 竖排基准取首项实际高度：两节点高度不等时（有无协议 Badge）才不留多余空隙
+        val secondX = lerp(halfWidth + horizontalGap, 0, fraction)
+        val secondY = lerp(0, (first?.height ?: 0) + verticalGap, fraction)
+        val contentHeight = maxOf(
+            first?.height ?: 0,
+            if (second != null) secondY + second.height else 0,
+        ) + NodeRowBottomPadding.roundToPx()
+
+        // 整组按「总高 × 进度」连续收缩，摊到本行即 rowCount*进度 - rowIndex：末行先卷完、逐行往上
+        val expand = expandProgress?.floatValue ?: 1f
+        val visibleFraction = (rowCount * expand - rowIndex).coerceIn(0f, 1f)
+        val rowHeight = (contentHeight * visibleFraction).roundToInt()
+
+        // 内容按完整高度测量并顶部对齐，超出由段上 clipToBounds 裁掉——卷起而非压扁变形
+        layout(rowWidth, rowHeight) {
+            first?.placeRelative(0, 0)
+            second?.placeRelative(secondX, secondY)
         }
     }
 }
@@ -570,7 +686,6 @@ private fun ProxyNodeCard(
     isTesting: Boolean = false,
     onTestDelay: () -> Unit = {},
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val timeoutStr = stringResource(R.string.proxy_timeout)
     val delayText = when {
@@ -588,7 +703,7 @@ private fun ProxyNodeCard(
     }
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .then(
                 if (isSelectable) {
                     Modifier

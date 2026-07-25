@@ -56,9 +56,9 @@ class ProxyViewModel(
     private val _sortOption = MutableStateFlow(loadInitialSortOption())
     val sortOption: StateFlow<Int> = _sortOption.asStateFlow()
 
-    // 节点卡片单列全宽排布，长节点名两列排布下会被截断
-    private val _fullWidthNodes = MutableStateFlow(loadInitialFullWidthNodes())
-    val fullWidthNodes: StateFlow<Boolean> = _fullWidthNodes.asStateFlow()
+    // 节点每行 1 个铺满宽度，关闭时每行 2 个
+    private val _singleColumn = MutableStateFlow(loadInitialSingleColumn())
+    val singleColumn: StateFlow<Boolean> = _singleColumn.asStateFlow()
 
     private var repository: MihomoRepository? = null
 
@@ -78,13 +78,13 @@ class ProxyViewModel(
     private fun loadInitialSortOption(): Int =
         storage?.getString(StorageKeys.PROXY_NODE_SORT_OPTION, "0")?.toIntOrNull() ?: 0
 
-    fun updateFullWidthNodes(enabled: Boolean) {
-        _fullWidthNodes.value = enabled
-        storage?.putString(StorageKeys.PROXY_NODE_FULL_WIDTH, if (enabled) "true" else "false")
+    fun updateSingleColumn(enabled: Boolean) {
+        _singleColumn.value = enabled
+        storage?.putString(StorageKeys.PROXY_NODE_SINGLE_COLUMN, if (enabled) "true" else "false")
     }
 
-    private fun loadInitialFullWidthNodes(): Boolean =
-        storage?.getString(StorageKeys.PROXY_NODE_FULL_WIDTH, "false") == "true"
+    private fun loadInitialSingleColumn(): Boolean =
+        storage?.getString(StorageKeys.PROXY_NODE_SINGLE_COLUMN, "false") == "true"
 
     fun setRepository(repo: MihomoRepository?) {
         loadJob?.cancel()

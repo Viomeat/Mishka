@@ -76,8 +76,8 @@ object StorageKeys {
     // 代理页设置
     const val PROXY_NODE_SORT_OPTION = "proxy_node_sort_option"
 
-    // 节点卡片单列全宽排布（长节点名两列放不下时使用），默认 false（两列）
-    const val PROXY_NODE_FULL_WIDTH = "proxy_node_full_width"
+    // 节点单列显示，默认 false（每行 2 个）
+    const val PROXY_NODE_SINGLE_COLUMN = "proxy_node_single_column"
 
     // 通用设置
     const val DARK_MODE = "dark_mode"
