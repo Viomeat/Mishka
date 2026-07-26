@@ -5,6 +5,7 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.androidApplication)
+    alias(libs.plugins.baselineProfile)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.ksp)
@@ -12,6 +13,7 @@ plugins {
 }
 
 dependencies {
+    baselineProfile(projects.baselineprofile)
     implementation(platform(libs.koin.bom))
     implementation(libs.bundles.koin)
     implementation(libs.bundles.androidx.lifecycle)
@@ -21,6 +23,7 @@ dependencies {
     implementation(libs.bundles.ktor)
     implementation(libs.bundles.miuix)
     implementation(libs.androidx.activity)
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.material.icons.extended)
     implementation(libs.hiddenapibypass)
     implementation(libs.quickie.bundled)
@@ -32,14 +35,15 @@ room3 {
     schemaDirectory("$projectDir/schemas")
 }
 
+val properties = Properties()
+runCatching { properties.load(project.rootProject.file("local.properties").inputStream()) }
+val keystorePath: String? = properties.getProperty("KEYSTORE_PATH") ?: System.getenv("KEYSTORE_PATH")
+val keystorePwd: String? = properties.getProperty("KEYSTORE_PASS") ?: System.getenv("KEYSTORE_PASS")
+val alias: String? = properties.getProperty("KEY_ALIAS") ?: System.getenv("KEY_ALIAS")
+val pwd: String? = properties.getProperty("KEY_PASSWORD") ?: System.getenv("KEY_PASSWORD")
+
 @Suppress("UnstableApiUsage")
 android {
-    val properties = Properties()
-    runCatching { properties.load(project.rootProject.file("local.properties").inputStream()) }
-    val keystorePath = properties.getProperty("KEYSTORE_PATH") ?: System.getenv("KEYSTORE_PATH")
-    val keystorePwd = properties.getProperty("KEYSTORE_PASS") ?: System.getenv("KEYSTORE_PASS")
-    val alias = properties.getProperty("KEY_ALIAS") ?: System.getenv("KEY_ALIAS")
-    val pwd = properties.getProperty("KEY_PASSWORD") ?: System.getenv("KEY_PASSWORD")
     if (keystorePath != null) {
         signingConfigs {
             create("release") {
@@ -107,6 +111,23 @@ composeCompiler {
     stabilityConfigurationFiles.add(
         rootProject.layout.projectDirectory.file("app/compose_compiler_config.conf")
     )
+}
+
+baselineProfile {
+    automaticGenerationDuringBuild = false
+}
+
+androidComponents {
+    finalizeDsl { ext ->
+        // 插件只关旧 DSL 的 isMinifyEnabled，管不到随 initWith(release) 继承来的 optimization.enable
+        ext.buildTypes.findByName("nonMinifiedRelease")?.optimization?.enable = false
+        if (keystorePath == null) {
+            val debugSigning = ext.signingConfigs.getByName("debug")
+            listOf("nonMinifiedRelease", "benchmarkRelease").forEach { name ->
+                ext.buildTypes.findByName(name)?.signingConfig = debugSigning
+            }
+        }
+    }
 }
 
 abstract class DownloadGeoFilesTask : DefaultTask() {

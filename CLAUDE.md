@@ -1,6 +1,6 @@
 # Mishka
 
-miuix + mihomo 的 Android 代理客户端。**单模块 `:app`**（`com.android.application`，AGP 9 内置 Kotlin，源码全在 `src/main`）。UI 用 AndroidX Compose（compose compiler 插件 + `androidx.compose.*`），miuix 走其 `-android` 发布件。
+miuix + mihomo 的 Android 代理客户端。**产品代码单模块 `:app`**（`com.android.application`，AGP 9 内置 Kotlin，源码全在 `src/main`）；另有 `:baselineprofile`（`com.android.test`）只产出 Baseline Profile，不进 APK。UI 用 AndroidX Compose（compose compiler 插件 + `androidx.compose.*`），miuix 走其 `-android` 发布件。
 
 ## 技术栈
 
@@ -19,7 +19,9 @@ Mishka/
 ├── buildSrc/                  ProjectConfig（应用坐标/SDK）+ GoBuildTask（Go 交叉编译）
 ├── mihomo/                    git submodule（YuKongA/mihomo branch Mishka，5 patch 见关键约束）
 ├── scripta/                   includeBuild 复合构建代码编辑器（YAML 编辑），app 依赖 `scripta:editor`
+├── baselineprofile/           com.android.test 模块，BaselineProfileGenerator（冷启动 + 4 Tab 路径），本地连真机手动跑
 └── app/                       build.gradle.kts + compose_compiler_config.conf + schemas/（Room schema）
+    │                          src/release/generated/baselineProfiles/ 为生成产物，需提交
     └── src/main/
         ├── kotlin/.../mishka/
         │   ├── App.kt / MainActivity.kt / MishkaApplication.kt（startKoin + 全局初始化）
@@ -282,6 +284,9 @@ git submodule update --init --recursive
 
 # 快速验证 Kotlin（跳过 Go native，秒级）：
 ./gradlew :app:compileDebugKotlin -x buildMihomo_arm64_v8a
+
+# 刷新 Baseline Profile（需 adb 连一台 arm64 真机，产物提交进仓库）
+./gradlew :app:generateReleaseBaselineProfile
 ```
 
 单模块 `:app`。改 Kotlin 优先用 `:app:compileDebugKotlin -x buildMihomo_arm64_v8a` 快速验证（跳过 Go cgo）；只有验证 native/打包才跑完整 `:app:assembleDebug`（Go cgo ~分钟级）。`scripta` 复合构建首次 fresh config 时若报插件解析错，见「技术栈」节 scripta 复合构建说明（其插件由 scripta 自己的 `pluginManagement` 解析）。
@@ -404,6 +409,21 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 **错误兜底**：用户面向异常走 `Throwable.describe()`（`message ?: simpleName ?: "Unknown error"`），避免 Ktor `ConnectException()` 等无参异常漏到 UI 显示 "null"；`SubscriptionFetcher` 显式检查 `response.status.isSuccess` + 空 body 抛 typed `ImportError`
 
 **后台卡片隐藏**：`StorageKeys.HIDE_TASK_CARD` 控制 Settings General 里的「隐藏最近任务卡片」开关；Android 侧由 `MainActivity` 在 onCreate 读取偏好并通过 `ActivityManager.AppTask.setExcludeFromRecents()` 应用，运行时切换经 `App -> AppNavigation -> SettingsScreen` 透传 nullable `onHideTaskCardChange` callback 即时生效。不要把 MainActivity 固定写成 manifest `android:excludeFromRecents="true"`，否则会失去用户可切换语义；App/屏幕 composable 暴露 callback、不直接调 Android API（保持 UI 可测）。当前实现依赖单 Activity task（`appTasks.firstOrNull()`）；若以后引入 document/multi-task 入口，必须改为按当前 `taskId` 匹配目标 AppTask。
+
+**Baseline Profile 只能本地真机生成**：`:baselineprofile`（`com.android.test`）跑 [BaselineProfileGenerator](baselineprofile/src/main/kotlin/top/yukonga/mishka/baselineprofile/BaselineProfileGenerator.kt) 采集冷启动 + 4 Tab 路径，`./gradlew :app:generateReleaseBaselineProfile` 回写 `app/src/release/generated/baselineProfiles/`，**产物必须提交**——CI 只消费不生成。四条硬约束：
+
+- **CI 生成不可行**：APK 仅 arm64-v8a 且 `libmihomo.so` 无 x86 产物，x86_64 模拟器装不上；GitHub 的 ARM runner 不提供 KVM 跑 arm64 系统镜像。所以 `automaticGenerationDuringBuild = false`，绝不能挂到 `assembleRelease` 上，否则 CI 直接失败。
+- **`androidx.profileinstaller` 是必需依赖**：Mishka 走 GitHub 侧载分发，拿不到 Play 云端 profile；没有它，打进 `assets/dexopt/baseline.prof` 的内容不会被 ART 安装，整套配置等于白做。
+- **必须在 `finalizeDsl` 里关掉 `nonMinifiedRelease` 的 `optimization.enable`**：Baseline Profile 插件只会关旧 DSL 的 `isMinifyEnabled`，管不到 AGP 9 的 `optimization.enable`，而它随 `initWith(release)` 被继承。不关掉则 generator 采集到的是混淆后的类名，release 打包时再按自己的 mapping 重写一遍就全部错位——构建全绿、profile 静默失效。判据：`app/build/outputs/mapping/nonMinifiedRelease/mapping.txt` 不该存在，APK 内 `top/yukonga/mishka` 类名字符串应有数千个而非几十个（后者只剩 manifest keep 的组件）。
+- **benchmark 版本不能降到 stable**：`1.4.1` 在 AGP 9 下 apply 即失败（`Module ':app' is not a supported android module`），需 `1.5.0-alpha07+`。
+
+generator 里三段 workaround 都是采集不到数据的实测根因，删任何一段都会退回「`Generated Profile is empty`」：
+
+- **必须 `cmd package compile -f -m verify` 强制降级**：HyperOS 自带 `BaselineProfile` 服务，装包时就读 APK 内的 `assets/dexopt/baseline.prof` 把应用 AOT 成 `speed-profile`（logcat 可见 `compilation-reason=baseline`）。benchmark 自己跑的 `compile --reset` 只回到这个「已 AOT」状态，运行期不再 JIT，profile 恒为空。
+- **必须先 `pm grant POST_NOTIFICATIONS`**：首帧前弹出的通知授权框会把 MainActivity 挡在后面。ROM 的弹窗按钮没有 AOSP 的 `permission_allow_button` 之类 resource-id，只有中文文案，按文案点会随 locale 碎掉。
+- **`startup` 末尾必须等够 ART profile saver 的延迟**：`-Xps-save-resolved-classes-delay-ms` 默认 5s，`startActivityAndWait()` 一返回就结束这一轮会什么都没记录到（现象是 `tabs` 能过、只有 `startup` 空）。
+
+切 Tab 走 `HorizontalPager` 横滑而非按文案/坐标定位控件；`swipe` 后要 `SystemClock.sleep` 等动画收敛——Compose 动画不向 accessibility 报告 busy，`waitForIdle()` 会在 pager 切换途中就返回。收益预期要打折：`System.loadLibrary("mihomo")` 加载 56MB Go c-shared 库属于 native 固定开销，Baseline Profile 只优化 Compose 首帧、Koin 图构建这类字节码路径。
 
 **其他**：`Activity configChanges=uiMode` 防深浅色切换重建；预测性返回手势走 HiddenApiBypass 反射 `setEnableOnBackInvokedCallback`（Android 14+ 可选）；`network_security_config.xml` 全局 `cleartextTrafficPermitted=true`（订阅源常用 HTTP，对齐 CMFA UX；CMFA 因订阅 fetch 在 Go 侧绕过 Java 网络栈而无需此设置，Mishka 的 Ktor 走 OkHttp 必须显式放行）；`jniLibs.useLegacyPackaging = true` 确保 libmihomo.so 解压到 nativeLibraryDir
 

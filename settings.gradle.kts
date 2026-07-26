@@ -34,3 +34,4 @@ dependencyResolutionManagement {
 includeBuild("scripta")
 
 include(":app")
+include(":baselineprofile")
