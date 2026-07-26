@@ -53,7 +53,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -317,7 +317,7 @@ private fun SubscriptionItem(
             ) {
                 Icon(
                     modifier = Modifier.size(20.dp),
-                    imageVector = MiuixIcons.More,
+                    imageVector = MiuixIcons.MoreCircle,
                     contentDescription = stringResource(R.string.common_edit),
                     tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )

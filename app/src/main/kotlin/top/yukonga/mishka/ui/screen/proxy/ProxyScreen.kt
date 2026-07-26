@@ -96,7 +96,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Sort
 import top.yukonga.miuix.kmp.squircle.squircleBackground
@@ -291,7 +291,7 @@ fun ProxyScreen(
                                     holdDownState = showPopup.value,
                                 ) {
                                     Icon(
-                                        imageVector = MiuixIcons.More,
+                                        imageVector = MiuixIcons.MoreCircle,
                                         contentDescription = stringResource(R.string.common_more),
                                         tint = MiuixTheme.colorScheme.onSurface,
                                     )
