@@ -8,7 +8,7 @@ Kotlin（AGP 9 内置，不加独立 kotlin 插件）+ KSP。UI：AndroidX Compo
 
 **版本与坐标唯一真源 = `gradle/libs.versions.toml`**（含 `[bundles]` 分组），mihomo 版本在 `gradle.properties`，应用坐标/SDK 在 `buildSrc/ProjectConfig.kt`；**文档不复述版本号**（避免漂移）。版本信息走 `BuildConfig.VERSION_NAME`/`VERSION_CODE`。`scripta:editor`（Compose Multiplatform 代码编辑器）经 `includeBuild("scripta")` 引入，其插件由 scripta 自己的 `pluginManagement` 解析，根 `build.gradle.kts` 无需声明。
 
-Compose 稳定性走 [app/compose_compiler_config.conf](app/compose_compiler_config.conf)（把 kotlinx/Ktor/AndroidX 长生命周期容器与 `domain.model.*` 通配声明 stable，数据模型不加 `@Immutable`）。**新增推断 unstable 的三方/平台字段时优先加进该文件**，而非散落 `@Stable` 注解。
+Compose 稳定性走 [app/compose_compiler_config.conf](app/compose_compiler_config.conf)（`domain.model.*` 通配 + ViewModel / CoroutineScope / 组合根透传的平台服务，数据模型不加 `@Immutable`）。**该文件只保留实测在起作用的条目**——加之前先跑报告确认确有 unstable 参数，别凭直觉登记；新增推断 unstable 的三方/平台字段优先加进该文件，而非散落 `@Stable` 注解。三条易踩：① 条目对**子类生效**——`androidx.lifecycle.ViewModel` 一行覆盖全部 ViewModel，其内部字段（`ArrayDeque` 之类）的稳定性因此完全不影响 composable 参数；② FQN 必须与实际依赖包名一致，Room 3 是 `androidx.room3.*`（写 `androidx.room.*` 静默失配）；③ 解析器只认整行 `//` 注释，行尾注释会被当成 matcher 内容。校验：`composeCompiler { reportsDestination.set(layout.buildDirectory.dir("compose_reports")) }` + `:app:compileDebugKotlin -x buildMihomo_arm64_v8a --rerun-tasks`，看 `app-composables.txt` 有无 unstable 参数（当前 95 个 restartable composable 全部 skippable、0 unstable 参数），验完删掉临时配置。
 
 ## 项目结构
 
