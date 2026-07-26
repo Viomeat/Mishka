@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,6 +45,12 @@ class MishkaTunService : VpnService() {
     private var tunFd: Int = -1
     private var monitorJob: Job? = null
     private var notificationRefreshJob: Job? = null
+
+    // 与 ROOT 侧同源：ACTION_START 会被「打开应用自动连接」与补发 BOOT_COMPLETED 的
+    // BootReceiver 各触发一次，并发启动会重复建 TUN fd 并 fork 两个 mihomo。
+    // 跨线程访问（onStartCommand 在主线程，stop/restart/revoke 在 IO 协程）故 @Volatile。
+    @Volatile
+    private var startJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -95,9 +102,14 @@ class MishkaTunService : VpnService() {
         return START_STICKY
     }
 
+    /** 启动代理。**幂等**：已有启动协程在跑时忽略本次请求（见 [startJob]）。 */
     @SuppressLint("NewApi")
     private fun startProxy(subscriptionId: String? = null) {
-        scope.launch {
+        if (startJob?.isActive == true) {
+            Log.i(TAG, "Start already in progress, ignoring duplicate START")
+            return
+        }
+        startJob = scope.launch {
             Log.i(TAG, "Starting proxy, subscription: $subscriptionId")
             // 防御外部直拉 Service：无 config 时 mihomo TUN init silent failure，必须 fast-fail
             if (!ProfileFileOps.hasValidConfig(this@MishkaTunService, subscriptionId)) {
@@ -398,6 +410,8 @@ class MishkaTunService : VpnService() {
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = TunMode.Vpn))
         dynamicNotification.stop()
         scope.launch(Dispatchers.IO) {
+            // 先让进行中的启动协程收敛，否则下面的 startProxy 会被幂等检查挡掉
+            startJob?.cancelAndJoin()
             runner.stop()
             closeTunFd()
             withContext(Dispatchers.Main) {
@@ -412,6 +426,8 @@ class MishkaTunService : VpnService() {
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = TunMode.Vpn))
         dynamicNotification.stop()
         scope.launch(Dispatchers.IO) {
+            // 用户在启动过程中按停止：先中止启动协程，避免它继续把状态写回 Running
+            startJob?.cancelAndJoin()
             runner.stop()
             closeTunFd()
             PlatformStorage(this@MishkaTunService).putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
@@ -445,7 +461,11 @@ class MishkaTunService : VpnService() {
         runner.stop()
         closeTunFd()
         PlatformStorage(this).putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-        ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+        // 失败路径 updateState(Error) + stopSelf() 紧接着就走到这里，无条件写 Stopped 会抹掉
+        // 刚写入的 Error，用户只看到「未运行」
+        if (ProxyServiceBridge.state.value.state != ProxyState.Error) {
+            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+        }
         scope.cancel()
         Log.i(TAG, "MishkaTunService destroyed")
         super.onDestroy()
@@ -458,6 +478,7 @@ class MishkaTunService : VpnService() {
         dynamicNotification.stop()
         PlatformStorage(this).putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
         scope.launch(Dispatchers.IO) {
+            startJob?.cancelAndJoin()
             runner.stop()
             closeTunFd()
             ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))

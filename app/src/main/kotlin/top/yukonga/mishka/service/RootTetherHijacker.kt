@@ -76,6 +76,14 @@ object RootTetherHijacker {
 
     const val DEFAULT_IFACES = "wlan1,wlan2"
 
+    // `-w <秒>`：让 iptables 自己排队等 xtables.lock；重试覆盖等待超时后锁仍被占的极端情况
+    internal const val IPT_WAIT_SECONDS = 5
+    private const val IPT_LOCK_RETRIES = 3
+    private const val IPT_LOCK_RETRY_DELAY_MS = 300L
+
+    // iptables 抢锁失败的退出码（resource problem）
+    private const val IPT_RESOURCE_PROBLEM_CODE = 4
+
     enum class Mode(val storageValue: String) {
         BYPASS("bypass"),
         PROXY("proxy");
@@ -89,20 +97,35 @@ object RootTetherHijacker {
      * 探测内核是否支持 xt_TPROXY。策略：创建临时 mangle chain，尝试追加一条
      * TPROXY 规则，以该追加命令的返回码判断；之后清理 chain（失败也忽略）。
      * 幂等、零副作用，可重复调用。
+     *
+     * **锁争用不等于内核不支持**：抢不到 xtables.lock 时退出码同样非 0（4），与「内核没有
+     * xt_TPROXY」无法从返回码区分。故撞锁退避重试，耗尽仍是锁问题就返回 true 交给 apply 验证
+     * ——误判「支持」只是让 apply 装不上规则并留日志，误判「不支持」会直接打死启动。
      */
     fun probeTproxySupport(): Boolean {
         val probeName = "mishka_probe_${System.currentTimeMillis() % 1_000_000}"
-        val cmd = "iptables -t mangle -N $probeName 2>/dev/null; " +
-                "iptables -t mangle -A $probeName -p tcp -j TPROXY " +
+        val cmd = "iptables -w $IPT_WAIT_SECONDS -t mangle -N $probeName 2>/dev/null; " +
+                "iptables -w $IPT_WAIT_SECONDS -t mangle -A $probeName -p tcp -j TPROXY " +
                 "--on-ip 127.0.0.1 --on-port 1 --tproxy-mark 0x1/0x1; " +
                 "rc=\$?; " +
-                "iptables -t mangle -F $probeName 2>/dev/null; " +
-                "iptables -t mangle -X $probeName 2>/dev/null; " +
+                "iptables -w $IPT_WAIT_SECONDS -t mangle -F $probeName 2>/dev/null; " +
+                "iptables -w $IPT_WAIT_SECONDS -t mangle -X $probeName 2>/dev/null; " +
                 "exit \$rc"
-        val r = runWithOutput(cmd)
-        val ok = r.code == 0
-        Log.i(TAG, "probeTproxySupport: supported=$ok code=${r.code} out=${r.output.oneLine()}")
-        return ok
+        repeat(IPT_LOCK_RETRIES) { attempt ->
+            val r = runWithOutput(cmd, timeoutSeconds = IPT_WAIT_SECONDS + 5L)
+            if (r.code == 0) {
+                Log.i(TAG, "probeTproxySupport: supported=true code=0 out=${r.output.oneLine()}")
+                return true
+            }
+            if (!r.isXtablesLockFailure()) {
+                Log.i(TAG, "probeTproxySupport: supported=false code=${r.code} out=${r.output.oneLine()}")
+                return false
+            }
+            Log.w(TAG, "probeTproxySupport: xtables lock busy (attempt ${attempt + 1}/$IPT_LOCK_RETRIES), retrying")
+            Thread.sleep(IPT_LOCK_RETRY_DELAY_MS)
+        }
+        Log.w(TAG, "probeTproxySupport: xtables lock never released, assuming supported (apply will verify)")
+        return true
     }
 
     /**
@@ -488,9 +511,20 @@ object RootTetherHijacker {
 
     private data class ShellResult(val code: Int, val output: String)
 
-    private fun runWithOutput(command: String, timeoutSeconds: Long = 5): ShellResult {
+    /** 失败是否源于抢不到 xtables.lock。code 4 是锁争用；文本匹配兜底 su 包装掉返回码的 ROM */
+    private fun ShellResult.isXtablesLockFailure(): Boolean =
+        code == IPT_RESOURCE_PROBLEM_CODE || output.contains("xtables lock", ignoreCase = true)
+
+    /** 给 iptables/ip6tables 补 `-w`（排队等锁）。已带 `-w` 或非 iptables 命令原样返回 */
+    private fun withIptablesWait(command: String): String {
+        if (!command.startsWith("iptables ") && !command.startsWith("ip6tables ")) return command
+        if (command.contains(" -w ")) return command
+        return command.replaceFirst(Regex("^(ip6?tables)\\s+"), "$1 -w $IPT_WAIT_SECONDS ")
+    }
+
+    private fun runWithOutput(command: String, timeoutSeconds: Long = IPT_WAIT_SECONDS + 5L): ShellResult {
         return try {
-            val process = ProcessBuilder("su", "-c", command)
+            val process = ProcessBuilder("su", "-c", withIptablesWait(command))
                 .redirectErrorStream(true)   // 合并 stderr，失败原因会进 output
                 .start()
             val output = process.inputStream.bufferedReader().readText().trim()

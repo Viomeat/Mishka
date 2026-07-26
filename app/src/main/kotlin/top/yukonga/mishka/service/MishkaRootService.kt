@@ -4,7 +4,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
-import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -12,7 +11,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.mishka.MishkaApplication
@@ -22,6 +23,7 @@ import top.yukonga.mishka.data.repository.OverrideJsonStore
 import top.yukonga.mishka.domain.model.resolveExternalController
 import top.yukonga.mishka.domain.model.resolveSecretOrNull
 import top.yukonga.mishka.platform.AppListProvider
+import top.yukonga.mishka.platform.BootSession
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.ProxyServiceBridge
 import top.yukonga.mishka.platform.ProxyServiceStatus
@@ -61,6 +63,14 @@ class MishkaRootService : Service() {
     private val overrideStore by lazy { OverrideJsonStore(AndroidProfileFileManager(this)) }
     private var monitorJob: Job? = null
     private var notificationRefreshJob: Job? = null
+
+    // 自动连接与补发 BOOT_COMPLETED 的 BootReceiver 会各发一次 ACTION_START，两条启动协程
+    // 并发跑 iptables 会互抢 xtables.lock。@Volatile：主线程写，stop/restart 在 IO 协程读
+    @Volatile
+    private var startJob: Job? = null
+
+    @Volatile
+    private var startJobAttachOnly = false
 
     // 当前正在运行的 submode；由 onStartCommand 的 EXTRA_SUBMODE 设定
     @Volatile
@@ -132,8 +142,24 @@ class MishkaRootService : Service() {
     private fun isRootRunning(mode: TunMode): Boolean =
         mode == TunMode.RootTun || mode == TunMode.RootTproxy
 
+    /**
+     * 启动代理。**幂等**：已有启动协程在跑时忽略本次请求。唯一例外是 fresh START 抢占
+     * 进行中的 attach-only——后者失败只保持停止，而 fresh 请求要求「必须跑起来」。
+     */
     private fun startProxy(subscriptionId: String? = null, attachOnly: Boolean = false) {
-        scope.launch {
+        val inFlight = startJob?.takeIf { it.isActive }
+        if (inFlight != null) {
+            if (attachOnly || !startJobAttachOnly) {
+                Log.i(TAG, "Start in progress, ignoring duplicate START (attachOnly=$attachOnly)")
+                return
+            }
+            Log.i(TAG, "Fresh START supersedes in-flight attach-only start")
+            inFlight.cancel()
+        }
+        startJobAttachOnly = attachOnly
+        startJob = scope.launch {
+            // 抢占时等被取消者收敛，避免两条协程同时跑 iptables
+            inFlight?.join()
             val submode = currentSubmode
             val tunMode = submode.tunMode
             Log.i(TAG, "Starting proxy (ROOT $submode), subscription: $subscriptionId, attachOnly=$attachOnly")
@@ -246,6 +272,12 @@ class MishkaRootService : Service() {
             // 绝不回退到全新启动——用户未主动请求启动，只是打开了 app。清状态、置 Stopped 后退出。
             // 设备重启 / 进程崩溃后打开 app 会走到这里，避免"未开自动重启却自动跑起来"。
             if (attachOnly) {
+                // 本路径全程无 suspend 点，cancel() 打断不了；再往下会 stopSelf 掉 Service、
+                // 连带杀死接替的协程，故被抢占时显式让位
+                if (!isActive) {
+                    Log.i(TAG, "Attach-only start superseded, leaving state to the new start")
+                    return@launch
+                }
                 Log.i(TAG, "Attach-only reopen: no live mihomo to reconnect, staying stopped")
                 clearPersistedState(storage)
                 storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
@@ -327,8 +359,10 @@ class MishkaRootService : Service() {
                 storage.putString(StorageKeys.ROOT_TPROXY_KERNEL_CAPABLE, if (supported) "true" else "false")
                 supported
             } else {
-                // 非 PROXY 路径没有理由在 UI 里显示 TPROXY 相关告警，清空状态
-                storage.putString(StorageKeys.ROOT_TPROXY_KERNEL_CAPABLE, "")
+                // 非 PROXY 路径不显示 TPROXY 告警；但 TPROXY submode 前面已写入探测结果，别清掉
+                if (submode == Submode.Tun) {
+                    storage.putString(StorageKeys.ROOT_TPROXY_KERNEL_CAPABLE, "")
+                }
                 false
             }
             val viaProxy = storage.getString(StorageKeys.SUBSCRIPTION_UPDATE_VIA_PROXY, "true") == "true"
@@ -494,8 +528,8 @@ class MishkaRootService : Service() {
         storage.putString(StorageKeys.ROOT_MIHOMO_SECRET, secret)
         storage.putString(StorageKeys.ROOT_START_TIME, startTime.toString())
         storage.putString(StorageKeys.ROOT_ACTIVE_SUBSCRIPTION_ID, subscriptionId ?: "")
-        // boot session 标记：记录本次启动时的 elapsedRealtime，reopen 时据此识别设备是否重启过
-        storage.putString(StorageKeys.ROOT_START_ELAPSED, SystemClock.elapsedRealtime().toString())
+        // reopen 时据此识别设备是否重启过
+        BootSession.mark(this, storage)
     }
 
     private fun clearPersistedState(storage: PlatformStorage) {
@@ -503,7 +537,7 @@ class MishkaRootService : Service() {
         storage.putString(StorageKeys.ROOT_MIHOMO_SECRET, "")
         storage.putString(StorageKeys.ROOT_START_TIME, "")
         storage.putString(StorageKeys.ROOT_ACTIVE_SUBSCRIPTION_ID, "")
-        storage.putString(StorageKeys.ROOT_START_ELAPSED, "")
+        BootSession.clear(storage)
         storage.putString(StorageKeys.ROOT_TETHER_MODE_ACTIVE, "")
         storage.putString(StorageKeys.ROOT_SUBMODE_ACTIVE, "")
     }
@@ -536,6 +570,8 @@ class MishkaRootService : Service() {
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = currentSubmode.tunMode))
         dynamicNotification.stop()
         scope.launch(Dispatchers.IO) {
+            // 先让进行中的启动协程收敛，否则下面的 startProxy 会被幂等检查挡掉
+            startJob?.cancelAndJoin()
             val storage = PlatformStorage(this@MishkaRootService)
             val runningSubscriptionId = storage.getString(StorageKeys.ROOT_ACTIVE_SUBSCRIPTION_ID, "").ifEmpty { null }
             runner.stop()
@@ -555,6 +591,8 @@ class MishkaRootService : Service() {
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = currentSubmode.tunMode))
         dynamicNotification.stop()
         scope.launch(Dispatchers.IO) {
+            // 用户在启动过程中按停止：先中止启动协程，避免它继续把状态写回 Running
+            startJob?.cancelAndJoin()
             val storage = PlatformStorage(this@MishkaRootService)
             val runningSubscriptionId = storage.getString(StorageKeys.ROOT_ACTIVE_SUBSCRIPTION_ID, "").ifEmpty { null }
             runner.stop()
@@ -573,7 +611,11 @@ class MishkaRootService : Service() {
         monitorJob?.cancel()
         dynamicNotification.stop()
         // 注意：onDestroy 不 kill mihomo，让它继续运行以便重连
-        ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+        // 失败路径 updateState(Error) + stopSelf() 紧接着就走到这里，无条件写 Stopped 会抹掉
+        // 刚写入的 Error，用户只看到「未运行」
+        if (ProxyServiceBridge.state.value.state != ProxyState.Error) {
+            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+        }
         scope.cancel()
         Log.i(TAG, "MishkaRootService destroyed")
         super.onDestroy()

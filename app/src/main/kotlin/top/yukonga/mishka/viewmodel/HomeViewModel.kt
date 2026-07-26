@@ -30,6 +30,7 @@ import top.yukonga.mishka.platform.PlatformSystemInfo
 import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.platform.ProxyState
 import top.yukonga.mishka.platform.TunMode
+import top.yukonga.mishka.platform.showToast
 import top.yukonga.mishka.util.FormatUtils
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
@@ -189,6 +190,9 @@ class HomeViewModel(
     // 订阅切换发生在代理 Starting 窗口内时挂起，等状态切到 Running 再重启（见 onActiveSubscriptionChanged）
     private var pendingRestartOnRunning = false
 
+    // 已弹过 toast 的错误消息，用于抑制同一失败的重复提示；回到 Stopped 时清空
+    private var lastErrorToast: String? = null
+
     init {
         // 状态机仅维护 UI 状态字段（isStarting / isRunning / startTime / mihomoPid / errorMessage）
         // mihomo 客户端实例由 connectionManager 统一持有，HomeViewModel 不再自建
@@ -226,11 +230,19 @@ class HomeViewModel(
 
                     ProxyState.Stopped -> {
                         _uiState.value = HomeUiState()
+                        lastErrorToast = null
                         resetHotStates()
                     }
 
                     ProxyState.Error -> {
-                        _uiState.value = HomeUiState(errorMessage = status.errorMessage)
+                        // errorMessage 不在首页渲染，Error 与 Stopped 视觉上无差别，失败必须弹出来。
+                        // 跳过发布方已提示过的，同一条也只弹一次（Error 可能重复 emit）
+                        val message = status.errorMessage
+                        if (message.isNotBlank() && !status.errorNotified && message != lastErrorToast) {
+                            lastErrorToast = message
+                            showToast(message, long = true)
+                        }
+                        _uiState.value = HomeUiState(errorMessage = message)
                         resetHotStates()
                     }
                 }

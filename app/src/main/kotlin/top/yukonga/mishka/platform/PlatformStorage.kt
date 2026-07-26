@@ -20,10 +20,9 @@ object StorageKeys {
     const val ROOT_START_TIME = "root_start_time"
     const val ROOT_ACTIVE_SUBSCRIPTION_ID = "root_active_subscription_id"
 
-    // 启动时刻的 boot session 标记（SystemClock.elapsedRealtime，重启归零、单调递增）。
-    // reopen 重连前用它识别设备是否重启过：now < 该值 ⇒ 期间重启过 ⇒ root 进程必已死，
-    // 不能把过期 PID 误当"仍存活"而自动全新启动
-    const val ROOT_START_ELAPSED = "root_start_elapsed"
+    // 启动时刻的 boot session 标记，用于 reopen 重连前识别设备是否重启过（重启会杀死 root
+    // mihomo，不能把过期 PID 误当"仍存活"）。判定逻辑见 [BootSession]
+    const val ROOT_BOOT_COUNT = "root_boot_count"
 
     // 订阅
     const val ACTIVE_PROFILE_UUID = "active_profile_uuid"

@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 import top.yukonga.mishka.R
 import top.yukonga.mishka.data.backup.BackupManager
 import top.yukonga.mishka.data.backup.WebDavClient
@@ -20,6 +19,7 @@ import top.yukonga.mishka.platform.ProxyState
 import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.platform.showToast
 import top.yukonga.mishka.util.describe
+import kotlin.coroutines.resume
 
 @Immutable
 data class BackupUiState(

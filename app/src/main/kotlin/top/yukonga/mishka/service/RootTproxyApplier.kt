@@ -104,16 +104,18 @@ object RootTproxyApplier {
      */
     fun anyRulesPresent(): Boolean {
         // 优先 xt_comment 扫描（精度最高），次选 chain 名，最后 priority anchor
+        val w = RootTetherHijacker.IPT_WAIT_SECONDS
         val script = """
             #!/system/bin/sh
-            iptables -t mangle -S 2>/dev/null | grep -q '$COMMENT_TAG_PREFIX' && exit 0
-            iptables -t nat    -S 2>/dev/null | grep -q '$COMMENT_TAG_PREFIX' && exit 0
-            iptables -t mangle -S 2>/dev/null | grep -q '$CHAIN_PRE' && exit 0
-            iptables -t mangle -S 2>/dev/null | grep -q '$CHAIN_OUT' && exit 0
+            iptables -w $w -t mangle -S 2>/dev/null | grep -q '$COMMENT_TAG_PREFIX' && exit 0
+            iptables -w $w -t nat    -S 2>/dev/null | grep -q '$COMMENT_TAG_PREFIX' && exit 0
+            iptables -w $w -t mangle -S 2>/dev/null | grep -q '$CHAIN_PRE' && exit 0
+            iptables -w $w -t mangle -S 2>/dev/null | grep -q '$CHAIN_OUT' && exit 0
             ip rule show 2>/dev/null | grep -q '^$PRIORITY:' && exit 0
             exit 1
         """.trimIndent()
-        val code = RootHelper.runRootScriptHeredoc(script, timeoutSeconds = 3)
+        // 超时需容纳 `-w` 的锁等待，否则等锁的那几秒会被当成 su 错误
+        val code = RootHelper.runRootScriptHeredoc(script, timeoutSeconds = w + 5L)
         return code != 1
     }
 
