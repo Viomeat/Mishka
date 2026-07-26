@@ -62,6 +62,10 @@ class ProxyViewModel(
     private val _singleColumn = MutableStateFlow(loadInitialSingleColumn())
     val singleColumn: StateFlow<Boolean> = _singleColumn.asStateFlow()
 
+    // 纯展示偏好，与排序、单列一样在 UI 层应用，不重新拉数据
+    private val _showGlobalGroup = MutableStateFlow(loadInitialShowGlobalGroup())
+    val showGlobalGroup: StateFlow<Boolean> = _showGlobalGroup.asStateFlow()
+
     private var repository: MihomoRepository? = null
 
     // mihomo 重启切 client 时取消旧的 loadProxies 协程，防止其 HTTP 响应已读完但 UI 写回
@@ -87,6 +91,14 @@ class ProxyViewModel(
 
     private fun loadInitialSingleColumn(): Boolean =
         storage?.getString(StorageKeys.PROXY_NODE_SINGLE_COLUMN, "false") == "true"
+
+    fun updateShowGlobalGroup(enabled: Boolean) {
+        _showGlobalGroup.value = enabled
+        storage?.putString(StorageKeys.PROXY_SHOW_GLOBAL_GROUP, if (enabled) "true" else "false")
+    }
+
+    private fun loadInitialShowGlobalGroup(): Boolean =
+        storage?.getString(StorageKeys.PROXY_SHOW_GLOBAL_GROUP, "true") != "false"
 
     fun setRepository(repo: MihomoRepository?) {
         loadJob?.cancel()

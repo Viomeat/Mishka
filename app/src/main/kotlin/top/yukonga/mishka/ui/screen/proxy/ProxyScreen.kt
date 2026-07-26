@@ -67,6 +67,7 @@ import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -130,8 +131,17 @@ fun ProxyScreen(
         delay(300.milliseconds)
         singleColumnAnimating = false
     }
+    val showGlobalGroup = viewModel?.showGlobalGroup?.collectAsStateWithLifecycle()?.value != false
     val scrollBehavior = MiuixScrollBehavior()
-    val groups = uiState.groups
+    // 全局模式下 GLOBAL 是唯一出口，无视开关必须可选
+    val globalModeActive = uiState.mode == ProxyViewModel.MODE_GLOBAL
+    val groups = remember(uiState.groups, globalModeActive, showGlobalGroup) {
+        if (showGlobalGroup || globalModeActive) {
+            uiState.groups
+        } else {
+            uiState.groups.filter { it.name != ProxyViewModel.GLOBAL_GROUP }.toPersistentList()
+        }
+    }
 
     val modeHintRes = when (uiState.mode) {
         ProxyViewModel.MODE_DIRECT -> R.string.proxy_mode_direct_hint
@@ -296,7 +306,7 @@ fun ProxyScreen(
                                     ListPopupColumn {
                                         DropdownImpl(
                                             text = stringResource(R.string.proxy_single_column),
-                                            optionSize = 2,
+                                            optionSize = 3,
                                             isSelected = singleColumn,
                                             index = 0,
                                             onSelectedIndexChange = {
@@ -305,10 +315,22 @@ fun ProxyScreen(
                                             },
                                         )
                                         DropdownImpl(
-                                            text = stringResource(R.string.proxy_refresh_icon),
-                                            optionSize = 2,
-                                            isSelected = false,
+                                            text = stringResource(R.string.proxy_show_global_group),
+                                            optionSize = 3,
+                                            // 勾选态跟实际结果走，不是偏好值
+                                            isSelected = showGlobalGroup || globalModeActive,
                                             index = 1,
+                                            enabled = !globalModeActive,
+                                            onSelectedIndexChange = {
+                                                viewModel?.updateShowGlobalGroup(!showGlobalGroup)
+                                                showPopup.value = false
+                                            },
+                                        )
+                                        DropdownImpl(
+                                            text = stringResource(R.string.proxy_refresh_icon),
+                                            optionSize = 3,
+                                            isSelected = false,
+                                            index = 2,
                                             onSelectedIndexChange = {
                                                 coroutineScope.launch { IconLoader.clear() }
                                                 iconCacheVersion++
