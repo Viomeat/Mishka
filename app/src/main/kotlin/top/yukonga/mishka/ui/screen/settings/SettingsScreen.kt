@@ -63,6 +63,9 @@ fun SettingsScreen(
     var isAutoStartEnabled by remember {
         mutableStateOf(bootStartManager?.isEnabled() ?: false)
     }
+    var isAutoConnectEnabled by remember {
+        mutableStateOf(storage?.getString(StorageKeys.AUTO_CONNECT_ON_LAUNCH, "false") == "true")
+    }
     var isDynamicNotificationEnabled by remember {
         mutableStateOf(storage?.getString(StorageKeys.DYNAMIC_NOTIFICATION, "true") != "false")
     }
@@ -264,6 +267,17 @@ fun SettingsScreen(
                                 onCheckedChange = { checked ->
                                     storage?.putString(StorageKeys.SUBSCRIPTION_UPDATE_VIA_PROXY, if (checked) "true" else "false")
                                     isUpdateViaProxyEnabled = checked
+                                },
+                            )
+                        })
+                        add(CardItem("autoConnect") {
+                            SwitchPreference(
+                                title = stringResource(R.string.settings_auto_connect),
+                                summary = stringResource(R.string.settings_auto_connect_summary),
+                                checked = isAutoConnectEnabled,
+                                onCheckedChange = { checked ->
+                                    storage?.putString(StorageKeys.AUTO_CONNECT_ON_LAUNCH, if (checked) "true" else "false")
+                                    isAutoConnectEnabled = checked
                                 },
                             )
                         })

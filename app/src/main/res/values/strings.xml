@@ -293,8 +293,10 @@
     <string name="settings_dynamic_notification_summary_root_unsupported">VPN mode only</string>
     <string name="settings_subscription_via_proxy">Update via proxy</string>
     <string name="settings_subscription_via_proxy_summary">Use proxy when updating subscriptions</string>
-    <string name="settings_auto_restart">Auto Restart</string>
-    <string name="settings_auto_restart_summary">Automatically restore proxy after boot or app update</string>
+    <string name="settings_auto_connect">Connect on Launch</string>
+    <string name="settings_auto_connect_summary">Start the proxy when the app opens, if a usable profile is available</string>
+    <string name="settings_auto_restart">Restart on Boot</string>
+    <string name="settings_auto_restart_summary">Restore the proxy that was running before a reboot or app update</string>
     <string name="settings_theme_title">Appearance &amp; Theme</string>
     <string name="settings_theme_group_color">Color &amp; Theme</string>
     <string name="settings_theme_group_interface">Interface &amp; Effects</string>

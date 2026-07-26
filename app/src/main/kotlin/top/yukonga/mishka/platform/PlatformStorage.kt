@@ -10,6 +10,10 @@ object StorageKeys {
     const val TUN_MODE = "tun_mode"
     const val HAS_ROOT = "has_root"
 
+    // 打开应用时自动连接。与开机自启（BootStartManager 的组件位）相互独立：后者只在关机前
+    // 代理在运行时恢复，这个不看上次状态，只要有可用订阅就启动
+    const val AUTO_CONNECT_ON_LAUNCH = "auto_connect_on_launch"
+
     // ROOT 模式持久化
     const val ROOT_MIHOMO_PID = "root_mihomo_pid"
     const val ROOT_MIHOMO_SECRET = "root_mihomo_secret"

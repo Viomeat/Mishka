@@ -33,6 +33,9 @@ class ProxyServiceController(private val context: Context) {
 
     private val storage by lazy { PlatformStorage(context) }
 
+    // 见 verifyAndSyncState：自动连接每进程只消费一次
+    private var launchAutoConnectConsumed = false
+
     val status: StateFlow<ProxyServiceStatus> = ProxyServiceBridge.state
 
     fun start(subscriptionId: String? = null) {
@@ -84,13 +87,7 @@ class ProxyServiceController(private val context: Context) {
      * 同步发 STOP 让状态自洽。HomeUiState.errorMessage 当前未在 UI 展示，因此 Toast 必要。
      */
     fun resolveStartSubscriptionId(subscriptionId: String? = null): String? {
-        val effective = subscriptionId
-            ?: storage.getString(StorageKeys.ACTIVE_PROFILE_UUID, "").ifEmpty { null }
-        val configValid = effective != null &&
-                File(context.filesDir, "mihomo/imported/$effective/config.yaml").let {
-                    it.isFile && it.length() > 0
-                }
-        if (configValid) return effective
+        startableSubscriptionId(subscriptionId)?.let { return it }
 
         val msg = noActiveProfileMessage()
         showToast(msg, long = true)
@@ -109,6 +106,18 @@ class ProxyServiceController(private val context: Context) {
         // 防止 Boot/升级路径在订阅缺失下被 BootReceiver 反复触发
         storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
         return null
+    }
+
+    /**
+     * 纯校验版：active 订阅存在且 config.yaml 已落盘时返回其 uuid，否则 null。无任何副作用，
+     * 供自动连接这类「不该因缺订阅打断用户」的静默路径使用。
+     */
+    private fun startableSubscriptionId(subscriptionId: String? = null): String? {
+        val effective = subscriptionId
+            ?: storage.getString(StorageKeys.ACTIVE_PROFILE_UUID, "").ifEmpty { null }
+            ?: return null
+        val config = File(context.filesDir, "mihomo/imported/$effective/config.yaml")
+        return effective.takeIf { config.isFile && config.length() > 0 }
     }
 
     private fun noActiveProfileMessage(): String =
@@ -191,6 +200,12 @@ class ProxyServiceController(private val context: Context) {
     }
 
     fun verifyAndSyncState() {
+        // 「打开应用时自动连接」是每次冷启动一次的意图：controller 由 Koin 以 single 提供，
+        // 标记随进程存活，因此回前台的后续 onResume 不再触发——否则用户手动停止后切回来又被拉起
+        val autoConnect = !launchAutoConnectConsumed &&
+                storage.getString(StorageKeys.AUTO_CONNECT_ON_LAUNCH, "false") == "true"
+        launchAutoConnectConsumed = true
+
         val wasRunning = storage.getString(StorageKeys.SERVICE_WAS_RUNNING, "false") == "true"
         val bridgeState = ProxyServiceBridge.state.value.state
 
@@ -221,20 +236,37 @@ class ProxyServiceController(private val context: Context) {
             val startElapsed = storage.getString(StorageKeys.ROOT_START_ELAPSED, "").toLongOrNull()
             val rebooted = startElapsed != null && SystemClock.elapsedRealtime() < startElapsed
             if (hasPid && !rebooted) {
-                // 同一 boot session 内且有持久化 PID：可能仍存活，交给 Service 做三重存活校验重连
-                reattachRoot()
+                // 同一 boot session 内且有持久化 PID：可能仍存活，交给 Service 做三重存活校验重连。
+                // 自动连接开启时改走 start()——它同样先尝试 attach 复用存活进程，区别只在 attach
+                // 不成时允许全新启动，而用户已表达「打开应用就要连上」的意图
+                if (autoConnect) launchAutoConnect() else reattachRoot()
                 return
             }
             // 设备已重启 / 无 PID 可重连：清掉过期状态，保持停止
             storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
             storage.putString(StorageKeys.ROOT_MIHOMO_PID, "")
             storage.putString(StorageKeys.ROOT_START_ELAPSED, "")
+            if (autoConnect) launchAutoConnect()
             return
         }
 
         if (wasRunning && currentMode == TunMode.Vpn) {
             storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
         }
+        if (autoConnect) launchAutoConnect()
+    }
+
+    /**
+     * 冷启动时按用户设置自动连接。无可用订阅时静默返回——用户只是打开了 app，不该用错误 toast
+     * 打断；VPN 缺授权时弹系统授权框，授权回调（MainActivity 的 launcher）会重新发起启动。
+     */
+    private fun launchAutoConnect() {
+        val id = startableSubscriptionId() ?: return
+        if (getTunMode() == TunMode.Vpn && !hasVpnPermission()) {
+            requestVpnPermission()
+            return
+        }
+        start(id)
     }
 
     companion object {
