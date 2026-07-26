@@ -512,7 +512,6 @@ private fun MainPage(
                     onStartProxy = { homeViewModel?.startProxy() },
                     onSwitchMode = { homeViewModel?.switchMode(it) },
                     onSwitchTunStack = { homeViewModel?.switchTunStack(it) },
-                    onSwitchProxyGroup = { homeViewModel?.switchProxyGroup(it) },
                 )
 
                 1 -> ProxyScreen(bottomPadding = bottomPadding, viewModel = proxyViewModel)

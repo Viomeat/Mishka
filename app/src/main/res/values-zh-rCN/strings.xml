@@ -131,11 +131,13 @@
     <string name="home_latency_normal">正常</string>
     <string name="home_latency_partial">部分</string>
     <string name="home_latency_abnormal">异常</string>
-    <string name="home_switch">切换</string>
-    <string name="home_select_proxy_group">选择代理组</string>
+    <string name="home_latency_not_via_rules">未走规则</string>
 
-    <!-- Home - Network -->
-    <string name="home_network">网络</string>
+    <!-- Home - Overview -->
+    <string name="home_overview">概览</string>
+    <string name="home_speed_detail">实时连接速率</string>
+    <string name="home_speed_no_active_connection">暂无活跃连接</string>
+    <string name="home_tools">工具</string>
     <string name="home_address">地址</string>
     <string name="home_interface">接口</string>
     <string name="home_speed">网速</string>

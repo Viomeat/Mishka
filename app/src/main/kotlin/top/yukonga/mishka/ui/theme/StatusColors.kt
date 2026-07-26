@@ -99,6 +99,25 @@ object StatusColors {
         }
     }
 
+    /** 流量折线：上传 */
+    val trafficUpload: Color
+        @Composable @ReadOnlyComposable
+        get() = if (LocalAppDarkMode.current) Green300Dark else Green600Light
+
+    /** 流量折线：下载 */
+    val trafficDownload: Color
+        @Composable @ReadOnlyComposable
+        get() = if (LocalAppDarkMode.current) Blue300Dark else Blue600Light
+
+    /** 订阅配额用量：逼近耗尽时转警示色，其余跟随主题 primary */
+    @Composable
+    @ReadOnlyComposable
+    fun usage(progress: Float): Color = when {
+        progress >= 0.9f -> danger
+        progress >= 0.75f -> warning
+        else -> MiuixTheme.colorScheme.primary
+    }
+
     /** Proxy 节点选中态背景 */
     val selectedNodeContainer: Color
         @Composable @ReadOnlyComposable
@@ -113,6 +132,8 @@ object StatusColors {
     private val Red600Light = Color(0xFFE53935)
     private val Gray400Dark = Color(0xFFBDBDBD)
     private val Gray500Light = Color(0xFF9E9E9E)
+    private val Blue300Dark = Color(0xFF42A5F5)
+    private val Blue600Light = Color(0xFF1E88E5)
 }
 
 enum class RunState { Running, Pending, Stopped }

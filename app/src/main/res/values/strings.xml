@@ -133,11 +133,13 @@
     <string name="home_latency_normal">Normal</string>
     <string name="home_latency_partial">Partial</string>
     <string name="home_latency_abnormal">Abnormal</string>
-    <string name="home_switch">Switch</string>
-    <string name="home_select_proxy_group">Select Proxy Group</string>
+    <string name="home_latency_not_via_rules">Not via rules</string>
 
-    <!-- Home - Network -->
-    <string name="home_network">Network</string>
+    <!-- Home - Overview -->
+    <string name="home_overview">Overview</string>
+    <string name="home_speed_detail">Live Connection Rates</string>
+    <string name="home_speed_no_active_connection">No active connections</string>
+    <string name="home_tools">Tools</string>
     <string name="home_address">Address</string>
     <string name="home_interface">Interface</string>
     <string name="home_speed">Speed</string>

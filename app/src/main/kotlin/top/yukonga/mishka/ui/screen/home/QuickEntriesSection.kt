@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.mishka.R
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
@@ -25,11 +26,14 @@ fun LazyListScope.quickEntriesSection(
     onNavigateConnection: () -> Unit = {},
     onNavigateDnsQuery: () -> Unit = {},
 ) {
+    item(key = "quick_entries_title") {
+        SmallTitle(text = stringResource(R.string.home_tools))
+    }
     item(key = "quick_entries") {
         Column(
             modifier = Modifier
                 .padding(horizontal = 12.dp)
-                .padding(vertical = 6.dp),
+                .padding(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(

@@ -126,12 +126,8 @@ fun DnsQueryScreen(
         ) {
             // 输入区域
             item(key = "input") {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .padding(top = 12.dp, bottom = 6.dp),
-                    insideMargin = PaddingValues(16.dp),
+                Column(
+                    modifier = Modifier.padding(all = 12.dp)
                 ) {
                     // 域名输入框
                     TextField(

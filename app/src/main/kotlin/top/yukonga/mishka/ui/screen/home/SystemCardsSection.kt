@@ -1,5 +1,6 @@
 package top.yukonga.mishka.ui.screen.home
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,13 +9,10 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.collections.immutable.ImmutableList
@@ -39,12 +38,13 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import top.yukonga.mishka.R
+import top.yukonga.mishka.ui.util.sheetContentSafePadding
 import top.yukonga.mishka.util.FormatUtils
 import top.yukonga.mishka.util.formatIsoTimeRelative
-import top.yukonga.mishka.viewmodel.HomeUiState
 import top.yukonga.mishka.viewmodel.MemorySnapshot
 import top.yukonga.mishka.viewmodel.ProviderTrafficInfo
 import top.yukonga.mishka.viewmodel.SystemInfoSnapshot
+import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -57,23 +57,21 @@ import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import kotlin.math.roundToInt
 import kotlin.time.Instant
 
-fun LazyListScope.bottomCardsSection(
-    state: HomeUiState = HomeUiState(),
+/** 「概览」分组第二行：本机 IP / 网卡 + 系统占用；标题由 [overviewCardsSection] 的第一行统一给出 */
+fun LazyListScope.systemCardsSection(
     memory: MemorySnapshot = MemorySnapshot(),
     systemInfo: SystemInfoSnapshot = SystemInfoSnapshot(),
-    onSubscriptionClick: () -> Unit = {},
 ) {
-    item(key = "bottom_cards") {
+    item(key = "system_cards") {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
-                .padding(top = 6.dp, bottom = 12.dp)
+                .padding(vertical = 6.dp)
                 .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -82,9 +80,6 @@ fun LazyListScope.bottomCardsSection(
                     .weight(1f)
                     .fillMaxHeight(),
                 insideMargin = PaddingValues(16.dp),
-                // 代理未运行时 provider 流量无数据可查，禁用点击避免弹出空弹窗
-                onClick = if (state.isRunning) onSubscriptionClick else null,
-                pressFeedbackType = PressFeedbackType.Sink,
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -92,23 +87,15 @@ fun LazyListScope.bottomCardsSection(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(R.string.home_subscription),
+                        text = "IP",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface,
                     )
-                    BadgeLabel("SUB")
+                    BadgeLabel(ipCategoryBadge(systemInfo.localIp))
                 }
-                InfoRow(
-                    stringResource(R.string.home_used),
-                    state.subscription?.let { FormatUtils.formatBytes(it.Upload + it.Download) } ?: "--",
-                    Modifier.padding(top = 8.dp)
-                )
-                InfoRow(
-                    stringResource(R.string.home_total),
-                    state.subscription?.let { FormatUtils.formatBytes(it.Total) } ?: "--",
-                    Modifier.padding(top = 4.dp)
-                )
+                InfoRow(stringResource(R.string.home_address), systemInfo.localIp, Modifier.padding(top = 8.dp))
+                InfoRow(stringResource(R.string.home_interface), systemInfo.interfaceName, Modifier.padding(top = 4.dp))
             }
 
             Card(
@@ -142,6 +129,28 @@ fun LazyListScope.bottomCardsSection(
                 )
             }
         }
+    }
+}
+
+/**
+ * 按 IP 段归类：
+ * - `198.18.0.0/15` → TUN（sing-tun / VpnService fake-ip 段）
+ * - RFC1918 `10/8` / `172.16/12` / `192.168/16` + CGNAT `100.64/10` + link-local `169.254/16` → LAN
+ * - 其他（公网 / 空值 / 解析失败）→ WAN
+ */
+private fun ipCategoryBadge(ip: String): String {
+    val parts = ip.split('.')
+    if (parts.size != 4) return "WAN"
+    val o1 = parts[0].toIntOrNull() ?: return "WAN"
+    val o2 = parts[1].toIntOrNull() ?: return "WAN"
+    return when (o1) {
+        198 if (o2 == 18 || o2 == 19) -> "TUN"
+        10 -> "LAN"
+        192 if o2 == 168 -> "LAN"
+        172 if o2 in 16..31 -> "LAN"
+        100 if o2 in 64..127 -> "LAN"
+        169 if o2 == 254 -> "LAN"
+        else -> "WAN"
     }
 }
 
@@ -179,13 +188,13 @@ internal fun SubscriptionTrafficDialog(
             }
         },
     ) {
-        // sheet 自身不处理底部 inset，内容需自行避让手势条
-        val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = bottomInset)
-                .heightIn(min = 200.dp),
+                .sheetContentSafePadding()
+                .heightIn(min = 200.dp)
+                // sheet 是 wrapContentHeight，loading 切列表时高度会整体跳；spec 与其入场动画同参
+                .animateContentSize(folmeSpring(damping = 0.9f, response = 0.38f, visibilityThreshold = IntSize(1, 1))),
         ) {
             when {
                 // 刷新期间隐藏旧数据，只显示加载指示器，成功后再展示新内容
@@ -227,9 +236,7 @@ private fun ProviderTrafficMessage(
 ) {
     Text(
         text = text,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp),
+        modifier = modifier.fillMaxWidth(),
         textAlign = TextAlign.Center,
         fontSize = 14.sp,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,

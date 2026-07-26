@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +51,6 @@ fun HomeScreen(
     onStartProxy: () -> Unit = {},
     onSwitchMode: (String) -> Unit = {},
     onSwitchTunStack: (String) -> Unit = {},
-    onSwitchProxyGroup: (String) -> Unit = {},
 ) {
     val scrollBehavior = MiuixScrollBehavior()
 
@@ -64,6 +65,23 @@ fun HomeScreen(
     val blurActive = backdrop != null
     val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface
     var showSubscriptionTraffic by rememberSaveable { mutableStateOf(false) }
+    var showSpeedDetail by rememberSaveable { mutableStateOf(false) }
+    val topConnectionRates by (
+        viewModel?.topConnectionRates?.collectAsStateWithLifecycle()
+            ?: remember { mutableStateOf(null) }
+        )
+
+    // WS 订阅只在详情打开期间存续，理由见 startConnectionRateTracking
+    if (showSpeedDetail) {
+        DisposableEffect(viewModel) {
+            viewModel?.startConnectionRateTracking()
+            onDispose { viewModel?.stopConnectionRateTracking() }
+        }
+    }
+    // 代理停止后不会再有快照可差分，速率被重置回「未就绪」，留着详情只会无限转圈
+    LaunchedEffect(uiState.isRunning) {
+        if (!uiState.isRunning) showSpeedDetail = false
+    }
 
     Scaffold(
         modifier = modifier,
@@ -107,26 +125,35 @@ fun HomeScreen(
                     isStarting = uiState.isStarting,
                     isStopping = uiState.isStopping,
                 )
+                overviewCardsSection(
+                    speed = speed,
+                    state = uiState,
+                    onSpeedClick = { showSpeedDetail = true },
+                    onSubscriptionClick = {
+                        showSubscriptionTraffic = true
+                        viewModel?.refreshProviderTraffic()
+                    },
+                )
+                systemCardsSection(
+                    memory = memory,
+                    systemInfo = systemInfo,
+                )
+                latencySection(uiState, onTestLatency)
                 quickEntriesSection(
                     onNavigateLog = onNavigateLog,
                     onNavigateProvider = onNavigateProvider,
                     onNavigateConnection = onNavigateConnection,
                     onNavigateDnsQuery = onNavigateDnsQuery,
                 )
-                latencySection(uiState, onTestLatency, onSwitchProxyGroup)
-                networkInfoSection(speed = speed, systemInfo = systemInfo)
-                bottomCardsSection(
-                    state = uiState,
-                    memory = memory,
-                    systemInfo = systemInfo,
-                    onSubscriptionClick = {
-                        showSubscriptionTraffic = true
-                        viewModel?.refreshProviderTraffic()
-                    },
-                )
             }
         }
     }
+
+    SpeedDetailSheet(
+        show = showSpeedDetail,
+        rates = topConnectionRates,
+        onDismiss = { showSpeedDetail = false },
+    )
 
     SubscriptionTrafficDialog(
         show = showSubscriptionTraffic,

@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.dsl.module
 import top.yukonga.mishka.data.api.MihomoConnectionManager
+import top.yukonga.mishka.data.api.RuleLatencyTester
 import top.yukonga.mishka.data.database.AppDatabase
 import top.yukonga.mishka.data.repository.OverrideJsonStore
 import top.yukonga.mishka.data.repository.ProfileProcessor
@@ -26,6 +27,7 @@ val dataModule = module {
 
     single { OverrideJsonStore(get()) }
     single { SubscriptionProxyResolver(get(), get()) }
+    single { RuleLatencyTester(get()) }
     single { MihomoConnectionManager(get()) }
 
     single { SubscriptionRepositoryImpl(get(), get(), get(), get(), getOrNull(), get()) }

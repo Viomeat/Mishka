@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
@@ -66,4 +67,19 @@ fun WideContentBox(
 @Composable
 fun Modifier.horizontalCutoutPadding(): Modifier = windowInsetsPadding(
     WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Horizontal),
+)
+
+/**
+ * BottomSheet 内容的底部安全区。miuix 的 sheet 只装了 `imePadding()`，`captionBar`（小窗 / 桌面窗口模式的系统
+ * 标题栏）与 `displayCutout` 仅取 top 分量算最大高度上限、不产生 padding，底部因此要内容自补。取
+ * [WindowInsets.systemBars]（含 statusBars / navigationBars / captionBar）∪ [WindowInsets.displayCutout] 的底部。
+ *
+ * 两处刻意的排除，勿「顺手补全」：
+ * - **不含 ime**：sheet 已装 `imePadding()`，并进来会叠成双倍底距。
+ * - **不含水平方向**：sheet `BottomCenter` 对齐且 `widthIn(max = 640.dp)`，水平 inset 只在有缺口的单侧生效，
+ *   会把居中的内容推偏；窗口更宽时两侧本就留白、缺口也压不到。
+ */
+@Composable
+fun Modifier.sheetContentSafePadding(): Modifier = windowInsetsPadding(
+    WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom),
 )

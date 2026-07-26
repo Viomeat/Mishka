@@ -13,6 +13,13 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** 卡片背景水印的共享度量，[TrafficSparkline] 与 [SubscriptionUsageBar] 共用；新增水印一律复用 */
+internal const val WatermarkHeightFraction = 0.52f
+
+internal const val WatermarkFillAlpha = 0.22f
+
+internal val WatermarkStrokeWidth = 1.5.dp
+
 @Composable
 internal fun BadgeLabel(text: String) {
     Text(

@@ -7,6 +7,8 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +17,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.data.api.MihomoConnectionManager
+import top.yukonga.mishka.data.api.RuleLatencyTester
 import top.yukonga.mishka.data.repository.OverrideJsonStore
+import top.yukonga.mishka.domain.model.ConnectionInfo
 import top.yukonga.mishka.domain.model.MihomoConfig
 import top.yukonga.mishka.domain.model.ProvidersResponse
 import top.yukonga.mishka.domain.model.Subscription
@@ -49,8 +53,8 @@ data class HomeUiState(
     val latencyCloudflare: Int = -1,
     val latencyGoogle: Int = -1,
     val isTestingLatency: Boolean = false,
-    val proxyGroups: List<String> = emptyList(),
-    val selectedProxyGroup: String = "GLOBAL",
+    // false = 本轮退回了组拨测、未经规则引擎，UI 据此标注
+    val latencyViaRules: Boolean = true,
     val version: String = "",
     val errorMessage: String = "",
     val needsVpnPermission: Boolean = false,
@@ -73,18 +77,50 @@ data class ProviderTrafficInfo(
 // mihomo 的 "default" 特殊 provider（proxies: 段运行时聚合）的 vehicleType，非订阅集合，展示与更新都排除
 private const val VEHICLE_TYPE_COMPATIBLE = "Compatible"
 
+/**
+ * 流量历史窗口：最近 [HomeViewModel.TRAFFIC_HISTORY_CAPACITY] 个采样点的原始字节速率，用于绘制折线图。
+ * [seq] 单调递增，UI 侧既拿它作滑入动画的 key 也作动画目标值——比对 list 内容无法区分「新点与上一点等值」。
+ */
+@Immutable
+data class TrafficHistory(
+    val up: ImmutableList<Long> = persistentListOf(),
+    val down: ImmutableList<Long> = persistentListOf(),
+    val seq: Int = 0,
+)
+
 /** 高频流量快照：每 100–500ms 更新，独立 Flow 隔离重组 */
 @Immutable
 data class SpeedSnapshot(
     val uploadSpeed: String = "-- B/s",
     val downloadSpeed: String = "-- B/s",
+    val history: TrafficHistory = TrafficHistory(),
 )
+
+/** 主页连通性体检的三个探针；URL 一律用 http 明文，避免 TLS 握手把测量口径拉长 */
+enum class LatencyProbe(val url: String) {
+    Baidu("http://www.baidu.com"),
+    Cloudflare("http://www.cloudflare.com/cdn-cgi/trace"),
+    Google("http://www.google.com/generate_204"),
+}
 
 /** 高频内存快照 */
 @Immutable
 data class MemorySnapshot(
     val ramUsage: String = "-- MB",
     val ramTotal: String = "-- MB",
+)
+
+/**
+ * 单条连接的瞬时速率，由相邻两次 `/connections` 快照的累计字节差分得出。
+ * mihomo 只给累计量，不给速率——长连接的累计值会一直很大，据此排序看不出「此刻谁在跑」。
+ */
+@Immutable
+data class ConnectionRate(
+    val id: String,
+    val host: String,
+    val node: String,
+    val uploadRate: Long,
+    val downloadRate: Long,
 )
 
 /** 系统信息快照：网卡 + CPU，2s 一次 */
@@ -99,6 +135,7 @@ class HomeViewModel(
     private val serviceController: ProxyServiceController,
     private val overrideStore: OverrideJsonStore,
     private val connectionManager: MihomoConnectionManager,
+    private val latencyTester: RuleLatencyTester,
     private val getActiveSubscriptionId: () -> String? = { null },
     private val activeSubscription: StateFlow<Subscription?> = MutableStateFlow(null).asStateFlow(),
     private val onLiveProviderInfo: (subscriptionId: String?, info: SubscriptionInfo?) -> Unit = { _, _ -> },
@@ -120,7 +157,22 @@ class HomeViewModel(
     private val _uptimeState = MutableStateFlow(-1L)
     val uptimeState: StateFlow<Long> = _uptimeState.asStateFlow()
 
+    // 折线图的滑动窗口缓冲，仅在 viewModelScope(Main) 的 traffic collect 内访问，无需加锁
+    private val upHistory = ArrayDeque<Long>(TRAFFIC_HISTORY_CAPACITY)
+    private val downHistory = ArrayDeque<Long>(TRAFFIC_HISTORY_CAPACITY)
+    private var trafficSeq = 0
+
+    // null = 首轮差分未完成，空表 = 确实无活跃连接；UI 据此区分加载与空态
+    private val _topConnectionRates = MutableStateFlow<ImmutableList<ConnectionRate>?>(null)
+    val topConnectionRates: StateFlow<ImmutableList<ConnectionRate>?> = _topConnectionRates.asStateFlow()
+
+    // 上一次 /connections 快照：id → [累计上传, 累计下载]，仅在 connectionRateJob 内访问
+    private var prevConnectionBytes = emptyMap<String, LongArray>()
+    private var prevConnectionAtMillis = 0L
+
     private var repository: MihomoRepository? = null
+    private var latencyJob: Job? = null
+    private var connectionRateJob: Job? = null
     private var trafficJob: Job? = null
     private var memoryJob: Job? = null
     private var systemInfoJob: Job? = null
@@ -224,8 +276,6 @@ class HomeViewModel(
         initialLoadJob?.cancel()
         initialLoadJob = viewModelScope.launch {
             loadConfig(repo)
-            if (repository !== repo) return@launch
-            loadProxyGroups(repo)
             if (repository === repo) testLatency()
         }
         refreshProviderTraffic(repo, subscriptionId)
@@ -415,15 +465,90 @@ class HomeViewModel(
             repository?.trafficFlow()
                 ?.catch { /* 连接断开 */ }
                 ?.collect { traffic ->
+                    upHistory.addLast(traffic.up)
+                    downHistory.addLast(traffic.down)
+                    while (upHistory.size > TRAFFIC_HISTORY_CAPACITY) upHistory.removeFirst()
+                    while (downHistory.size > TRAFFIC_HISTORY_CAPACITY) downHistory.removeFirst()
                     _speedState.value = SpeedSnapshot(
                         uploadSpeed = FormatUtils.formatSpeed(traffic.up),
                         downloadSpeed = FormatUtils.formatSpeed(traffic.down),
+                        history = TrafficHistory(
+                            up = upHistory.toPersistentList(),
+                            down = downHistory.toPersistentList(),
+                            seq = ++trafficSeq,
+                        ),
                     )
                     if (!_uiState.value.isRunning) {
                         _uiState.value = _uiState.value.copy(isRunning = true)
                     }
                 }
         }
+    }
+
+    /**
+     * 订阅 `/connections` 并差分出各连接的瞬时速率。**只在速度卡详情打开期间调用**——每次 collect 新建一条 WS，
+     * 而这条流每秒推全量连接列表，常驻订阅代价不小；UI 关闭详情即调 [stopConnectionRateTracking]。
+     */
+    fun startConnectionRateTracking() {
+        val repo = repository ?: return
+        if (connectionRateJob?.isActive == true) return
+        prevConnectionBytes = emptyMap()
+        prevConnectionAtMillis = 0L
+        _topConnectionRates.value = null
+        connectionRateJob = viewModelScope.launch {
+            repo.connectionsFlow()
+                .catch { /* 连接断开 */ }
+                .collect { response ->
+                    if (repository !== repo) return@collect
+                    updateConnectionRates(response.connections)
+                }
+        }
+    }
+
+    fun stopConnectionRateTracking() {
+        connectionRateJob?.cancel()
+        connectionRateJob = null
+        prevConnectionBytes = emptyMap()
+        prevConnectionAtMillis = 0L
+        _topConnectionRates.value = null
+    }
+
+    private fun updateConnectionRates(connections: List<ConnectionInfo>) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val snapshot = connections.associate { it.id to longArrayOf(it.upload, it.download) }
+        val elapsedMillis = now - prevConnectionAtMillis
+        // 首轮只留基准：此时每条连接的累计量都还没有对照，全当成速率会把长连接的历史总量算成瞬时值
+        if (prevConnectionAtMillis == 0L || elapsedMillis <= 0) {
+            prevConnectionBytes = snapshot
+            prevConnectionAtMillis = now
+            return
+        }
+
+        val perSecond = elapsedMillis / 1000.0
+        val rates = connections.mapNotNull { conn ->
+            val prev = prevConnectionBytes[conn.id]
+            // prev 缺失说明这条连接是上一轮之后新建的，其累计量就是这段间隔内传的
+            val upDelta = (conn.upload - (prev?.get(0) ?: 0L)).coerceAtLeast(0L)
+            val downDelta = (conn.download - (prev?.get(1) ?: 0L)).coerceAtLeast(0L)
+            if (upDelta == 0L && downDelta == 0L) return@mapNotNull null
+            ConnectionRate(
+                id = conn.id,
+                host = conn.metadata.host.ifEmpty {
+                    "${conn.metadata.destinationIP}:${conn.metadata.destinationPort}"
+                },
+                // mihomo 的 chains 由内向外，首项即最终出站节点
+                node = conn.chains.firstOrNull().orEmpty(),
+                uploadRate = (upDelta / perSecond).toLong(),
+                downloadRate = (downDelta / perSecond).toLong(),
+            )
+        }
+
+        prevConnectionBytes = snapshot
+        prevConnectionAtMillis = now
+        _topConnectionRates.value = rates
+            .sortedByDescending { it.uploadRate + it.downloadRate }
+            .take(TOP_CONNECTION_COUNT)
+            .toPersistentList()
     }
 
     private fun startMemoryCollection() {
@@ -491,6 +616,9 @@ class HomeViewModel(
     }
 
     private fun resetHotStates() {
+        upHistory.clear()
+        downHistory.clear()
+        trafficSeq = 0
         _speedState.value = SpeedSnapshot()
         _memoryState.value = MemorySnapshot()
         _systemInfoState.value = SystemInfoSnapshot()
@@ -550,76 +678,53 @@ class HomeViewModel(
         serviceController.restart(getActiveSubscriptionId())
     }
 
-    private suspend fun loadProxyGroups(repo: MihomoRepository) {
-        repo.getGroups().onSuccess { response ->
-            if (repository !== repo) return@onSuccess
-            // 从 GLOBAL 组的 all 字段获取配置文件中的原始顺序
-            val globalGroup = response.proxies.firstOrNull { it.name == "GLOBAL" }
-            val orderMap = globalGroup?.all
-                ?.mapIndexed { index, name -> name to index }
-                ?.toMap() ?: emptyMap()
-
-            val sortedProxies = response.proxies
-                .filter { it.name != "GLOBAL" }
-                .sortedBy { orderMap[it.name] ?: Int.MAX_VALUE }
-
-            val groupNames = sortedProxies.map { it.name }
-            val defaultGroup = sortedProxies
-                .firstOrNull {
-                    it.type.equals("Selector", true) &&
-                            it.name.contains(Regex("(?i)proxy|代理|节点"))
-                }?.name
-                ?: sortedProxies.firstOrNull { it.type.equals("Selector", true) }?.name
-                ?: sortedProxies.firstOrNull { it.type.equals("URLTest", true) }?.name
-                ?: "GLOBAL"
-            _uiState.update {
-                it.copy(
-                    proxyGroups = groupNames,
-                    selectedProxyGroup = defaultGroup,
-                )
-            }
-        }
-    }
-
-    fun switchProxyGroup(group: String) {
-        _uiState.value = _uiState.value.copy(selectedProxyGroup = group)
-    }
-
     fun reloadConfig() {
         serviceController.restart(getActiveSubscriptionId())
     }
 
+    /**
+     * 三个探针一律经 [RuleLatencyTester] 按规则实测；mixed-port 解析不到时退回 GLOBAL 组拨测，
+     * 并置 `latencyViaRules = false` 让 UI 标注，不静默给出误导性数字。
+     */
     fun testLatency() {
-        if (_uiState.value.isTestingLatency) return
+        if (latencyJob?.isActive == true) return
         if (repository == null) return
         _uiState.value = _uiState.value.copy(isTestingLatency = true)
 
-        val proxyGroup = _uiState.value.selectedProxyGroup
-
-        viewModelScope.launch {
+        latencyJob = viewModelScope.launch {
             try {
-                // Baidu 用 DIRECT 测直连延迟
-                val baiduJob = launch {
-                    repository?.getProxyDelay("DIRECT", "http://www.baidu.com", 5000)
-                        ?.onSuccess { _uiState.value = _uiState.value.copy(latencyBaidu = it.delay) }
-                        ?.onFailure { _uiState.value = _uiState.value.copy(latencyBaidu = -1) }
-                }
-                // Cloudflare/Google 通过用户选择的代理组测试
-                val cfJob = launch {
-                    repository?.getProxyDelay(proxyGroup, "http://www.cloudflare.com/cdn-cgi/trace", 5000)
-                        ?.onSuccess { _uiState.value = _uiState.value.copy(latencyCloudflare = it.delay) }
-                        ?.onFailure { _uiState.value = _uiState.value.copy(latencyCloudflare = -1) }
-                }
-                val googleJob = launch {
-                    repository?.getProxyDelay(proxyGroup, "http://www.google.com/generate_204", 5000)
-                        ?.onSuccess { _uiState.value = _uiState.value.copy(latencyGoogle = it.delay) }
-                        ?.onFailure { _uiState.value = _uiState.value.copy(latencyGoogle = -1) }
-                }
-                baiduJob.join()
-                cfJob.join()
-                googleJob.join()
+                // 每个探针自己回报是否走了规则，不共写标志位
+                val viaRules = LatencyProbe.entries.map { probe ->
+                    async {
+                        val delay = latencyTester.measure(probe.url, LATENCY_TIMEOUT_MILLIS)
+                        if (delay == RuleLatencyTester.Unavailable) {
+                            fallbackProbe(probe)
+                            false
+                        } else {
+                            applyLatency(probe, delay)
+                            true
+                        }
+                    }
+                }.awaitAll()
+                _uiState.value = _uiState.value.copy(latencyViaRules = viaRules.all { it })
             } finally {
                 _uiState.value = _uiState.value.copy(isTestingLatency = false)
+            }
+        }
+    }
+
+    /** mixed-port 不可用时的降级：GLOBAL 组拨测，至少能反映节点本身通不通 */
+    private suspend fun fallbackProbe(probe: LatencyProbe) {
+        val result = repository?.getProxyDelay("GLOBAL", probe.url, LATENCY_TIMEOUT_MILLIS.toInt())
+        applyLatency(probe, result?.getOrNull()?.delay ?: -1)
+    }
+
+    private fun applyLatency(probe: LatencyProbe, delay: Int) {
+        _uiState.update {
+            when (probe) {
+                LatencyProbe.Baidu -> it.copy(latencyBaidu = delay)
+                LatencyProbe.Cloudflare -> it.copy(latencyCloudflare = delay)
+                LatencyProbe.Google -> it.copy(latencyGoogle = delay)
             }
         }
     }
@@ -637,6 +742,11 @@ class HomeViewModel(
         systemInfoJob?.cancel()
         runtimeConfigJob?.cancel()
         uptimeJob?.cancel()
+        // 一轮延迟测试最长 5s，不取消的话旧结果会在切换后回写进新订阅的 UI
+        latencyJob?.cancel()
+        _uiState.update { it.copy(isTestingLatency = false) }
+        // 旧 client 已被 close，差分基准随之失效
+        stopConnectionRateTracking()
         // mihomo 断开时清掉 live provider，订阅页立即回退到 DB 数据
         onLiveProviderInfo(null, null)
         mihomoPid = -1
@@ -645,5 +755,15 @@ class HomeViewModel(
     override fun onCleared() {
         super.onCleared()
         disconnectStreams()
+    }
+
+    companion object {
+        /** 折线图窗口点数；mihomo `/traffic` 为 1Hz 推送，即约 1 分钟历史 */
+        const val TRAFFIC_HISTORY_CAPACITY = 60
+
+        private const val LATENCY_TIMEOUT_MILLIS = 5000L
+
+        /** 速度卡详情展示的连接条数 */
+        private const val TOP_CONNECTION_COUNT = 5
     }
 }

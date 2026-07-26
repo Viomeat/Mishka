@@ -1,26 +1,17 @@
 package top.yukonga.mishka.ui.screen.home
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,25 +23,21 @@ import top.yukonga.mishka.R
 import top.yukonga.mishka.ui.theme.StatusColors
 import top.yukonga.mishka.util.FormatUtils
 import top.yukonga.mishka.viewmodel.HomeUiState
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 fun LazyListScope.latencySection(
     state: HomeUiState = HomeUiState(),
     onTestLatency: () -> Unit = {},
-    onSwitchProxyGroup: (String) -> Unit = {},
 ) {
     item(key = "latency_title") {
-        LatencyHeader(state, onTestLatency, onSwitchProxyGroup)
+        LatencyHeader(state, onTestLatency)
     }
     item(key = "latency") {
         Card(
@@ -77,7 +64,6 @@ fun LazyListScope.latencySection(
 private fun LatencyHeader(
     state: HomeUiState,
     onTestLatency: () -> Unit,
-    onSwitchProxyGroup: (String) -> Unit,
 ) {
     val allTested = state.latencyBaidu >= 0 || state.latencyCloudflare >= 0 || state.latencyGoogle >= 0
     val statusColor = when {
@@ -93,8 +79,6 @@ private fun LatencyHeader(
         else -> stringResource(R.string.home_latency_abnormal)
     }
 
-    var showGroupDialog by remember { mutableStateOf(false) }
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -106,20 +90,12 @@ private fun LatencyHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (state.isRunning && state.proxyGroups.isNotEmpty()) {
+            // 本轮未经规则引擎，明确标注而非静默给数字
+            if (state.isRunning && !state.latencyViaRules) {
                 Text(
-                    text = state.selectedProxyGroup,
+                    text = stringResource(R.string.home_latency_not_via_rules),
                     fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Text(
-                    text = stringResource(R.string.home_switch),
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { showGroupDialog = true }
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    color = StatusColors.warning,
                 )
             }
             if (state.isRunning) {
@@ -148,17 +124,6 @@ private fun LatencyHeader(
             }
         }
     }
-
-    ProxyGroupSelectDialog(
-        show = showGroupDialog,
-        groups = state.proxyGroups,
-        currentGroup = state.selectedProxyGroup,
-        onSelect = { group ->
-            onSwitchProxyGroup(group)
-            showGroupDialog = false
-        },
-        onDismiss = { showGroupDialog = false },
-    )
 }
 
 @Composable
@@ -189,55 +154,5 @@ private fun LatencyItem(name: String, delay: Int) {
             fontWeight = FontWeight.Medium,
             color = MiuixTheme.colorScheme.onSurface,
         )
-    }
-}
-
-@Composable
-private fun ProxyGroupSelectDialog(
-    show: Boolean,
-    groups: List<String>,
-    currentGroup: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var selected by remember(show, currentGroup) { mutableStateOf(currentGroup) }
-
-    WindowDialog(
-        show = show,
-        title = stringResource(R.string.home_select_proxy_group),
-        onDismissRequest = onDismiss,
-    ) {
-        Column {
-            LazyColumn(
-                modifier = Modifier.weight(1f, fill = false),
-            ) {
-                items(groups) { group ->
-                    TextButton(
-                        text = group,
-                        onClick = { selected = group },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (selected == group) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
-                    )
-                    if (group != groups.last()) Spacer(Modifier.height(8.dp))
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.common_confirm),
-                    onClick = { onSelect(selected) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                )
-                TextButton(
-                    text = stringResource(R.string.common_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
     }
 }
