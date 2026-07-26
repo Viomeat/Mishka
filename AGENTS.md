@@ -36,7 +36,7 @@ app/src/main/
 │   ├── data/{api（REST/WS + MihomoConnectionManager）,bridge（MishkaCoreBridge）,database,repository（*Impl + ProfileProcessor + OverrideJsonStore + SubscriptionProxyResolver）,backup}
 │   ├── platform/  service/  viewmodel/  util/  di/（4 个 Koin 模块）
 │   └── ui/{navigation,navigation3,component,platform,theme,screen}
-├── res/values{,-zh-rCN}/   assets/（构建时下载 GeoIP）   schemas/（Room）
+├── res/values{,-zh-rCN,-zh-rTW}/   assets/（构建时下载 GeoIP）   schemas/（Room）
 ├── cpp/  process_helper.c + mishka_jni.c + mihomo_wrapper.c + CMakeLists.txt
 ├── jniLibs/arm64-v8a/libmihomo.so   native/mishka_core/（Go cgo 源）
 └── src/release/generated/baselineProfiles/（生成产物，需提交）
@@ -80,7 +80,7 @@ MishkaApplication.startKoin ─ Koin（dataModule + androidPlatformModule + andr
 - **Pipeline 可取消**：协程 cancel → `nativeCancel(token)` → Go ctx Done → native 立即返回 "context canceled"；`cancelCurrentUpdate` 先同步 `clearProgress()` 让 UI 立即响应，再 cancel 协程。
 - **GeoIP 预制**：构建时 DownloadGeoFilesTask 下载 geoip.metadb/geosite.dat/ASN.mmdb 到 assets，启动时提取到 `files/mihomo/geodata/`。JNI 路径用 `mishkaCoreInit(geodataDir)` 把 mihomo 全局 homeDir 指到这里；subprocess runtime 按 `-d workDir` + symlink 复用同一份。
 - **WebDAV / 本地备份恢复**（设置 →「备份与恢复」）：固定文件名覆盖式，[WebDavClient](app/src/main/kotlin/top/yukonga/mishka/data/backup/WebDavClient.kt) 只做 MKCOL/PUT/GET + Basic Auth（短生命周期 client 用完即 close）。**重定向手动处理**：Ktor 默认只对 GET/HEAD 跟随 3xx，而服务器常把无尾斜杠目录 301 到带斜杠版本，MKCOL/PUT 收到 301 直接失败；集合 URL 一律带尾斜杠 + `davRequest` 手动跟随 301/302/307/308（保持方法与 body，**仅限同主机**——Basic 凭据跨主机跟随会泄露密码）。[BackupManager](app/src/main/kotlin/top/yukonga/mishka/data/backup/BackupManager.kt) 打包 `backup.json`（三表 **JSON 导出重放**而非拷 db 文件——绕开 WAL 一致性、跨 schema 由字段默认值兜底）+ imported//pending/ 目录树 + override.user.json。**geodata 符号链接与实体拷贝不进备份**（名单 + isSymbolicLink 双重排除，否则 readBytes 追链接把几十 MB 实体化进 zip）；prefs 黑名单排除设备/运行时态与 WebDAV 凭据自身。备份与恢复都持 `ProfileProcessor.withProcessLock`；恢复前置校验代理已停止，解包 canonicalPath 防 zip-slip；**恢复成功后强制重启进程**（内存热状态不随磁盘恢复刷新）。**组件状态型设置**：开机自启是 PackageManager 组件位而非 pref，走快照独立字段；Wi-Fi 策略组件位与监控服务由重启后 MainActivity 按 `WIFI_POLICY_ENABLED` 幂等 reconcile。本地备份复用同一 zip 与恢复管线：SAF `CreateDocument`（`"wt"` 截断写防旧文档尾部残留）+ `OpenDocument`（不按 MIME 过滤——网盘流转后常报 octet-stream）。
-- **国际化**：英文 + 中文（zh-rCN），Composable 用 `stringResource`、非 Composable 用 `context.getString`；日志英文，代码注释中文。
+- **国际化**：英文 + 简体中文（zh-rCN）+ 繁体中文（zh-rTW，台湾用语：設定/檔案/匯入/連線/連接埠/快取/伺服器/金鑰/還原/套用/群組/逾時，非简转繁），Composable 用 `stringResource`、非 Composable 用 `context.getString`；日志英文，代码注释中文。
 
 ## 数据库（Room 3）
 
@@ -239,4 +239,4 @@ mihomo 经 submodule 引入 Mishka fork（branch `Mishka`）。Gradle 按 ABI �
 - **Flow 收集**：所有屏幕用 `collectAsStateWithLifecycle()`，不用 compose runtime 的 `collectAsState`——后台时上游不再驱动重组。
 - **强跳过友好的状态形状**：UiState `data class` 必须 `@Immutable`；大集合字段一律 `ImmutableList`/`ImmutableMap`，避免 SSM 重组做全表结构性 `equals`。
 - **可复用组件 API**：`ui/component/*` 第一可选参必须是 `modifier: Modifier = Modifier` 并应用到 root-most 节点；wrapper 透传到底层 miuix 组件。
-- **用户反馈**走 `platform.showToast(message, long = false)`。**i18n**：所有用户字符串走 `stringResource` / `context.getString`，禁止硬编码；新增同时加 `res/values` + `res/values-zh-rCN`；key 命名 `{页面}_{描述}`，通用按钮 `common_` 前缀。
+- **用户反馈**走 `platform.showToast(message, long = false)`。**i18n**：所有用户字符串走 `stringResource` / `context.getString`，禁止硬编码；新增同时加 `res/values` + `res/values-zh-rCN` + `res/values-zh-rTW`；key 命名 `{页面}_{描述}`，通用按钮 `common_` 前缀。
