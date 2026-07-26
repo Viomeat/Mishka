@@ -133,6 +133,12 @@ fun ProxyScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val groups = uiState.groups
 
+    val modeHintRes = when (uiState.mode) {
+        ProxyViewModel.MODE_DIRECT -> R.string.proxy_mode_direct_hint
+        ProxyViewModel.MODE_GLOBAL -> R.string.proxy_mode_global_hint
+        else -> null
+    }
+
     val showPopup = remember { mutableStateOf(false) }
     val showSortPopup = remember { mutableStateOf(false) }
     var iconCacheVersion by remember { mutableIntStateOf(0) }
@@ -353,6 +359,24 @@ fun ProxyScreen(
                         end = sidePadding,
                     ),
                 ) {
+                    if (modeHintRes != null) {
+                        item(key = "mode_hint", contentType = "proxy_mode_hint") {
+                            CardSegment(
+                                isFirst = true,
+                                isLast = true,
+                                modifier = Modifier.animateItem(placementSpec = itemPlacementSpec),
+                                outerTopPadding = 12.dp,
+                                insidePadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(modeHintRes),
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    fontSize = 13.sp,
+                                )
+                            }
+                        }
+                    }
+
                     // 每组展平为「组头段 + 每行节点段」独立 lazy item；展开时只组合可见节点行，避免一次性组合整组造成卡顿
                     groups.forEach { group ->
                         val isExpanded = group.name in expandedGroups

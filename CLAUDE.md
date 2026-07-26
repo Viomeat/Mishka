@@ -325,6 +325,8 @@ CMake 任务自动 `dependsOn(buildMihomo)`，CMake 产出两个轻量 native �
 
 **GLOBAL 组常驻代理页**：mihomo `GET /group` 的返回里 GLOBAL 与普通代理组同级（Selector 类型），`ProxyViewModel.loadProxies` 既拿它的 `all` 当组排序基准，也把它本身排进列表——`mode == "global"` 时置顶（此时它是唯一生效出口），其余模式沉底。mode 从 `GET /configs` 现取（`switchMode` 写 override 后必 restart → `MihomoConnectionManager` 重建 repo → `setRepository` → `loadProxies`，位置自然跟随；不需要额外订阅 mode 变化）。GLOBAL 是 Selector，选择记忆（`SelectionDao`）与延迟测试对它自动生效。
 
+**出站模式提示而非隐藏代理组**：`GET /group` / `GET /proxies` 的返回与 `mode` 无关，direct 模式下 mihomo 在 `tunnel.resolveMetadata` 的 `case Direct:` 直接返回 DIRECT 出站、根本不查代理组，global 模式下只有 GLOBAL 决定出口。两种模式代理页仍显示全量组是**正确**的：`PUT /proxies/{group}` 在任何模式下都被接受、选择被 mihomo 记住，切回 rule 立即生效，延迟测试也照常有效——隐藏或折叠列表会砍掉「先挑好节点再切回规则模式」的正常用法。缺的只是告知，故 `ProxyUiState.mode` 携带小写 mode（`loadProxies` 里本就取到，此前只用于 GLOBAL 排序），`ProxyScreen` 据此在列表首个 lazy item 渲染 `CardSegment` 提示卡（`proxy_mode_direct_hint` / `proxy_mode_global_hint`），rule 模式或取不到配置时 mode 为空串、不产出该 item。mode 常量 `MODE_GLOBAL`/`MODE_DIRECT` 在 `ProxyViewModel.companion`（非 private，UI 侧共用同一份，禁止屏幕里裸写字符串）。
+
 **CMFA embed mode 禁 HTTP 配置 API**：`PATCH/PUT /configs` / `POST /restart` / `POST /configs/geo` / `PUT/PATCH /rules` / `POST /upgrade` 全部 404。**绝不添加** `patchConfig`/`restart` 方法，所有配置修改走 `OverrideJsonStore.update { ... }` + `serviceController.restart()`，UI 用 `RestartRequiredHint` Card 提示。
 
 **订阅导入走 JNI in-process**：fetch + provider prefetch + Parse 三步走 [MishkaCoreBridge.fetchAndValid](app/src/main/kotlin/top/yukonga/mishka/data/bridge/MishkaCoreBridge.kt)，禁止再起 mihomo 子进程做这些事。`MishkaApplication.onCreate` 必须先 `extractGeoFiles()` 再 `MishkaCoreBridge.init(geodataDir, userAgent)`——后者 `constant.SetHomeDir` 必须指向已就位的 GeoIP 目录。runtime 仍是 subprocess 路径，与 JNI 路径互不干扰

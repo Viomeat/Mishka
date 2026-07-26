@@ -40,6 +40,8 @@ data class ProxyUiState(
     val testingGroups: ImmutableSet<String> = persistentSetOf(),
     val testingNodes: ImmutableSet<String> = persistentSetOf(),
     val error: String = "",
+    // mihomo 出站模式，小写；取不到配置时为空串
+    val mode: String = "",
 )
 
 class ProxyViewModel(
@@ -178,7 +180,7 @@ class ProxyViewModel(
                         )
                     }
                     .toPersistentList()
-                _uiState.value = _uiState.value.copy(groups = groups)
+                _uiState.value = _uiState.value.copy(groups = groups, mode = mode)
 
                 // 恢复已保存的代理组选择
                 restoreSelections(repo, groups)
@@ -281,8 +283,9 @@ class ProxyViewModel(
         _uiState.value = _uiState.value.copy(groups = updatedGroups.toPersistentList())
     }
 
-    private companion object {
+    companion object {
         const val GLOBAL_GROUP = "GLOBAL"
         const val MODE_GLOBAL = "global"
+        const val MODE_DIRECT = "direct"
     }
 }
