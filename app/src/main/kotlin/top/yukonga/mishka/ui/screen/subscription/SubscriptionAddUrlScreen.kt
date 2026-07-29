@@ -64,8 +64,7 @@ fun SubscriptionAddUrlScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = MiuixScrollBehavior()
-    val defaultName = stringResource(R.string.common_new_config)
-    var inputName by remember { mutableStateOf(initialName.ifBlank { defaultName }) }
+    var inputName by remember { mutableStateOf(initialName) }
     var inputUrl by remember { mutableStateOf(initialUrl) }
     var userAgent by remember { mutableStateOf("") }
     var ageSecretKey by remember { mutableStateOf("") }
@@ -149,6 +148,8 @@ fun SubscriptionAddUrlScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 6.dp),
+                    label = stringResource(R.string.subscription_name_auto_placeholder),
+                    useLabelAsPlaceholder = true,
                 )
             }
             item(key = "url_title") {
@@ -215,7 +216,7 @@ fun SubscriptionAddUrlScreen(
                     onClick = {
                         val intervalMs = (intervalMinutes.toLongOrNull() ?: 0) * 60000
                         viewModel.addSubscription(
-                            name = inputName.ifBlank { defaultName },
+                            name = inputName.trim(),
                             url = inputUrl,
                             interval = intervalMs,
                             userAgent = userAgent.trim(),

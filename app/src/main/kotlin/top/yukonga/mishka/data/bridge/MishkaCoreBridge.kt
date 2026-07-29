@@ -29,6 +29,7 @@ data class CoreFetchResult(
     val download: Long = 0,
     val total: Long = 0,
     val expire: Long = 0,
+    val fileName: String = "",
 )
 
 class MishkaCoreError(message: String) : RuntimeException(message)

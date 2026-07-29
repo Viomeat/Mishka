@@ -89,7 +89,6 @@
     <string name="common_cleared">已清除</string>
     <string name="common_items_count">%1$d 筆</string>
     <string name="common_processing">處理中...</string>
-    <string name="common_new_config">新增設定檔</string>
 
     <!-- Home - Status -->
     <string name="home_starting">啟動中</string>
@@ -201,6 +200,7 @@
     <string name="subscription_qr_summary">掃描 QR Code 匯入</string>
     <string name="subscription_url_hint">僅接受 mihomo 設定檔（包含代理／規則）</string>
     <string name="subscription_name">名稱</string>
+    <string name="subscription_name_auto_placeholder">留空時自動從訂閱取得</string>
     <string name="subscription_url_label">URL</string>
     <string name="subscription_url_placeholder">僅接受 http(s) 與 content 類型</string>
     <string name="subscription_user_agent">User-Agent</string>

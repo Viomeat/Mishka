@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -37,17 +38,18 @@ type FetchProgress struct {
 }
 
 type FetchResult struct {
-	Upload   int64 `json:"upload"`
-	Download int64 `json:"download"`
-	Total    int64 `json:"total"`
-	Expire   int64 `json:"expire"`
+	Upload   int64  `json:"upload"`
+	Download int64  `json:"download"`
+	Total    int64  `json:"total"`
+	Expire   int64  `json:"expire"`
+	FileName string `json:"fileName"`
 }
 
-//export mishkaFetchAndValid
-//
 // 成功返回 JSON FetchResult 的 C.CString；失败返回 "error: ..."；NULL 表示参数非法。
 // 调用方必须 mishkaFreeString 释放返回值。进度由 mishkaQueryProgress 轮询。
 // userAgent 留空时退回 mishkaCoreInit 设置的全局默认 UA。
+//
+//export mishkaFetchAndValid
 func mishkaFetchAndValid(
 	cWorkDir *C.char,
 	cURL *C.char,
@@ -186,6 +188,7 @@ func fetchURL(ctx context.Context, u *url.URL, dest string, result *FetchResult,
 	}
 
 	parseUserinfo(resp.Header.Get("subscription-userinfo"), result)
+	result.FileName = dispositionFileName(resp.Header.Get("Content-Disposition"))
 
 	if err := os.MkdirAll(P.Dir(dest), 0700); err != nil {
 		return err
@@ -205,6 +208,41 @@ func fetchURL(ctx context.Context, u *url.URL, dest string, result *FetchResult,
 		return errors.New("empty response body")
 	}
 	return nil
+}
+
+// Content-Disposition 的 filename 常携带订阅名（subconverter / 机场面板惯例）。
+// mime.ParseMediaType 原生解码 RFC 5987 的 filename*=UTF-8” 扩展参数。
+func dispositionFileName(header string) string {
+	if header == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(header)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(params["filename"])
+	if name == "" {
+		return ""
+	}
+	// 非标准但常见：普通 filename 也被百分号编码；PathUnescape 不动 '+'（QueryUnescape 会转成空格）
+	if strings.Contains(name, "%") {
+		if decoded, err := url.PathUnescape(name); err == nil && strings.TrimSpace(decoded) != "" {
+			name = strings.TrimSpace(decoded)
+		}
+	}
+	// 防路径注入
+	name = path.Base(strings.ReplaceAll(name, "\\", "/"))
+	if name == "." || name == ".." || name == "/" {
+		return ""
+	}
+	lower := strings.ToLower(name)
+	for _, ext := range []string{".yaml", ".yml"} {
+		if strings.HasSuffix(lower, ext) {
+			name = name[:len(name)-len(ext)]
+			break
+		}
+	}
+	return strings.TrimSpace(name)
 }
 
 // subscription-userinfo 头格式：upload=xxx;download=yyy;total=zzz;expire=aaa

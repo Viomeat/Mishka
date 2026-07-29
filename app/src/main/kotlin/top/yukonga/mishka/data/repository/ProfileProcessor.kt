@@ -10,6 +10,7 @@ import top.yukonga.mishka.data.bridge.MishkaCoreBridge
 import top.yukonga.mishka.data.bridge.MishkaCoreError
 import top.yukonga.mishka.domain.model.ProfileType
 import top.yukonga.mishka.platform.ProfileFileManager
+import java.net.URI
 
 /**
  * 导入进度的语义步骤。本地化文案在 UI 层按 [ImportStep] 映射，
@@ -127,6 +128,7 @@ class ProfileProcessor(
                                 download = result.download,
                                 total = result.total,
                                 expire = result.expire,
+                                fallbackName = autoProfileName(snapshot, result.fileName),
                             )
                         }
                     }
@@ -136,6 +138,17 @@ class ProfileProcessor(
                 throw t
             }
         }
+    }
+
+    /**
+     * 名字留空时的兜底链：Content-Disposition > URL host > 固定串。是否采用由 commitPending
+     * 按 commit 时刻的 pending.name 判空决定——fetch 期间锁已释放，用户可能已另填名字，用户输入永远优先。
+     */
+    private fun autoProfileName(snapshot: PendingSnapshot, dispositionName: String): String {
+        if (snapshot.type != ProfileType.Url) return ""
+        return dispositionName
+            .ifBlank { runCatching { URI(snapshot.source).host.orEmpty() }.getOrDefault("") }
+            .ifBlank { "Subscription" }
     }
 
     private fun mapProgress(p: CoreFetchProgress): ImportProgress = when (p.action) {

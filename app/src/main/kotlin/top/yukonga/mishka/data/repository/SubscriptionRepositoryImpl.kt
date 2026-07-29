@@ -194,14 +194,16 @@ class SubscriptionRepositoryImpl(
         download: Long = 0,
         total: Long = 0,
         expire: Long = 0,
+        fallbackName: String = "",
     ) {
         val pending = pendingDao.queryByUUID(uuid)
             ?: throw IllegalArgumentException("No pending profile for $uuid")
         val existingImported = importedDao.queryByUUID(uuid)
 
+        // fallbackName 语义见 ProfileProcessor.autoProfileName：仅 pending.name 留空时采用
         val imported = ImportedEntity(
             uuid = uuid,
-            name = pending.name,
+            name = pending.name.ifBlank { fallbackName },
             type = pending.type,
             source = pending.source,
             userAgent = pending.userAgent,
@@ -396,10 +398,11 @@ sealed class ImportError(message: String) : Exception(message) {
 }
 
 /**
- * I/O 前的字段级校验：name 非空、URL 必须 http(s)、interval 0 或 ≥ 15min。
+ * I/O 前的字段级校验：name 非空（Url 型例外——留空走 fetch 后自动命名）、
+ * URL 必须 http(s)、interval 0 或 ≥ 15min。
  */
 fun PendingEntity.enforceFieldValid() {
-    if (name.isBlank()) throw ImportError.InvalidName()
+    if (name.isBlank() && type != ProfileType.Url) throw ImportError.InvalidName()
     if (type == ProfileType.Url) {
         val lower = source.lowercase()
         if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
