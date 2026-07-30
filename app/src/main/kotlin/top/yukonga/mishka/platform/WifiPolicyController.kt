@@ -92,10 +92,7 @@ object AndroidWifiPolicy {
             return null
         }
         callbackSsid?.let { return it }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val wifiInfo = capabilities.transportInfo as? WifiInfo
-            normalizeSsid(wifiInfo?.ssid)?.let { return it }
-        }
+        normalizeSsid((capabilities.transportInfo as? WifiInfo)?.ssid)?.let { return it }
         @Suppress("DEPRECATION")
         val fallback = (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)
             ?.connectionInfo

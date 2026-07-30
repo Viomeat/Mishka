@@ -5,7 +5,7 @@ object ProjectConfig {
 
     object Android {
         const val TARGET_SDK = 37
-        const val MIN_SDK = 26
+        const val MIN_SDK = 31
         const val COMPILE_SDK = 37
         const val COMPILE_SDK_MINOR = 0
     }

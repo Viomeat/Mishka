@@ -103,7 +103,6 @@ class MishkaTunService : VpnService() {
     }
 
     /** 启动代理。**幂等**：已有启动协程在跑时忽略本次请求（见 [startJob]）。 */
-    @SuppressLint("NewApi")
     private fun startProxy(subscriptionId: String? = null) {
         if (startJob?.isActive == true) {
             Log.i(TAG, "Start already in progress, ignoring duplicate START")
@@ -238,27 +237,25 @@ class MishkaTunService : VpnService() {
                         }
                     }
 
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        setMetered(false)
+                    // 伪装为非计量网络，否则 Google Play 等应用在蜂窝下拒绝走 VPN
+                    setMetered(false)
 
-                        // VPN 设置：系统代理
-                        val systemProxy = storage.getString(StorageKeys.VPN_SYSTEM_PROXY, "true") == "true"
-                        if (systemProxy) {
-                            val port = userOverride.mixedPort ?: 7890
-                            setHttpProxy(
-                                android.net.ProxyInfo.buildDirectProxy(
-                                    "127.0.0.1",
-                                    port,
-                                    listOf(
-                                        "localhost", "*.local", "127.*", "10.*", "172.16.*",
-                                        "172.17.*", "172.18.*", "172.19.*", "172.20.*",
-                                        "172.21.*", "172.22.*", "172.23.*", "172.24.*",
-                                        "172.25.*", "172.26.*", "172.27.*", "172.28.*",
-                                        "172.29.*", "172.30.*", "172.31.*", "192.168.*"
-                                    ),
-                                )
+                    val systemProxy = storage.getString(StorageKeys.VPN_SYSTEM_PROXY, "true") == "true"
+                    if (systemProxy) {
+                        val port = userOverride.mixedPort ?: 7890
+                        setHttpProxy(
+                            android.net.ProxyInfo.buildDirectProxy(
+                                "127.0.0.1",
+                                port,
+                                listOf(
+                                    "localhost", "*.local", "127.*", "10.*", "172.16.*",
+                                    "172.17.*", "172.18.*", "172.19.*", "172.20.*",
+                                    "172.21.*", "172.22.*", "172.23.*", "172.24.*",
+                                    "172.25.*", "172.26.*", "172.27.*", "172.28.*",
+                                    "172.29.*", "172.30.*", "172.31.*", "192.168.*"
+                                ),
                             )
-                        }
+                        )
                     }
                 }.establish()?.detachFd()
             } catch (e: Exception) {

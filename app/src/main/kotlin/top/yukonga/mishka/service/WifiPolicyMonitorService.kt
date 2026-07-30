@@ -13,7 +13,6 @@ import android.net.wifi.WifiInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,11 +48,7 @@ class WifiPolicyMonitorService : Service() {
     @Volatile
     private var callbackWifi: Pair<Network, String?>? = null
 
-    private inner class WifiNetworkCallback : ConnectivityManager.NetworkCallback {
-        constructor() : super()
-
-        @RequiresApi(Build.VERSION_CODES.S)
-        constructor(flags: Int) : super(flags)
+    private inner class WifiNetworkCallback(flags: Int) : ConnectivityManager.NetworkCallback(flags) {
 
         override fun onAvailable(network: Network) = scheduleEvaluate()
 
@@ -68,14 +63,10 @@ class WifiPolicyMonitorService : Service() {
         }
     }
 
-    // API 31+ 同步 getNetworkCapabilities 返回的 SSID 一律被系统打码，
+    // 同步 getNetworkCapabilities 返回的 SSID 一律被系统打码，
     // 只有带 FLAG_INCLUDE_LOCATION_INFO 注册的 callback 能拿到真实值
     private val networkCallback: ConnectivityManager.NetworkCallback =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            WifiNetworkCallback(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO)
-        } else {
-            WifiNetworkCallback()
-        }
+        WifiNetworkCallback(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO)
 
     override fun onBind(intent: Intent?): IBinder? = null
 

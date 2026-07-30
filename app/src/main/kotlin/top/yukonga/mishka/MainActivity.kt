@@ -399,10 +399,7 @@ class MainActivity : ComponentActivity() {
         am.appTasks
             .firstOrNull { task ->
                 val info = task.taskInfo ?: return@firstOrNull false
-                // TaskInfo.taskId 是 API 29 才加入的字段；26-28 上回退到 RecentTaskInfo.id
-                @Suppress("DEPRECATION")
-                val id = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) info.taskId else info.id
-                id == currentTaskId
+                info.taskId == currentTaskId
             }
             ?.setExcludeFromRecents(exclude)
     }
