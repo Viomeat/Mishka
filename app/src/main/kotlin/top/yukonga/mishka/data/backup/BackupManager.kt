@@ -140,23 +140,7 @@ class BackupManager(
                 throw BackupException("Backup version ${snapshot.version} is newer than supported $BACKUP_VERSION")
             }
 
-            // 文件先落地：目录整体替换
-            val importedDir = File(mihomoDir, "imported")
-            val pendingDir = File(mihomoDir, "pending")
-            importedDir.deleteRecursively()
-            pendingDir.deleteRecursively()
-            File(mihomoDir, OVERRIDE_FILE).delete()
-            for ((name, data) in entries) {
-                if (!name.startsWith("$ENTRY_FILES_PREFIX/")) continue
-                val relative = name.removePrefix("$ENTRY_FILES_PREFIX/")
-                val target = File(mihomoDir, relative)
-                // zip-slip 防御：规范化后必须仍在 mihomo 目录内
-                if (!target.canonicalPath.startsWith(mihomoDir.canonicalPath + File.separator)) {
-                    throw BackupException("Illegal entry path: $name")
-                }
-                target.parentFile?.mkdirs()
-                target.writeBytes(data)
-            }
+            stageAndSwapFiles(entries)
 
             // DB 清空重放；未知 ProfileType（未来版本新增）跳过该条而非失败
             importedDao.clearAll()
@@ -219,6 +203,55 @@ class BackupManager(
         closeEntry()
     }
 
+    /** 内容先全写进 staging（此时正式目录一动未动），再 rename 换入；失败从 old/ 回滚。 */
+    private fun stageAndSwapFiles(entries: Map<String, ByteArray>) {
+        val staging = File(mihomoDir, RESTORE_STAGING)
+        val old = File(mihomoDir, RESTORE_OLD)
+        staging.deleteRecursively()
+        old.deleteRecursively()
+        try {
+            staging.mkdirs()
+            for ((name, data) in entries) {
+                if (!name.startsWith("$ENTRY_FILES_PREFIX/")) continue
+                val target = File(staging, name.removePrefix("$ENTRY_FILES_PREFIX/"))
+                // zip-slip 防御：规范化后必须仍在 staging 内
+                if (!target.canonicalPath.startsWith(staging.canonicalPath + File.separator)) {
+                    throw BackupException("Illegal entry path: $name")
+                }
+                target.parentFile?.mkdirs()
+                target.writeBytes(data)
+            }
+            old.mkdirs()
+            RESTORE_TARGETS.forEach { swapIn(it, staging, old) }
+        } catch (e: Throwable) {
+            RESTORE_TARGETS.forEach { rollbackFrom(it, old) }
+            throw e
+        } finally {
+            staging.deleteRecursively()
+            old.deleteRecursively()
+        }
+    }
+
+    /** 正式目录挪进 old/，再换入 staging 的同名项；归档缺该项时正式目录留空。 */
+    private fun swapIn(name: String, staging: File, old: File) {
+        val current = File(mihomoDir, name)
+        if (current.exists() && !current.renameTo(File(old, name))) {
+            throw BackupException("Cannot move aside $name")
+        }
+        val incoming = File(staging, name)
+        if (incoming.exists() && !incoming.renameTo(current)) {
+            throw BackupException("Cannot swap in $name")
+        }
+    }
+
+    private fun rollbackFrom(name: String, old: File) {
+        val saved = File(old, name)
+        if (!saved.exists()) return
+        val current = File(mihomoDir, name)
+        current.deleteRecursively()
+        saved.renameTo(current)
+    }
+
     private fun zipDirIfExists(zip: ZipOutputStream, dir: File, entryPrefix: String) {
         if (!dir.isDirectory) return
         dir.walkTopDown()
@@ -254,6 +287,11 @@ class BackupManager(
         private const val ENTRY_SNAPSHOT = "backup.json"
         private const val ENTRY_FILES_PREFIX = "files"
         private const val OVERRIDE_FILE = "override.user.json"
+
+        // 与正式目录同分区，rename 才原子
+        private const val RESTORE_STAGING = ".restore"
+        private const val RESTORE_OLD = ".restore-old"
+        private val RESTORE_TARGETS = listOf("imported", "pending", OVERRIDE_FILE)
 
         /**
          * 不进备份也不从备份恢复的 key：本机/本次运行的设备态（root 探测、进程 PID、
