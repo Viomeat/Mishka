@@ -58,22 +58,24 @@ func mishkaFetchAndValid(
 	cUserAgent *C.char,
 	token C.int,
 ) *C.char {
-	workDir := C.GoString(cWorkDir)
-	rawURL := C.GoString(cURL)
-	httpProxy := C.GoString(cHttpProxy)
-	userAgent := C.GoString(cUserAgent)
+	return guardString(func() string {
+		workDir := C.GoString(cWorkDir)
+		rawURL := C.GoString(cURL)
+		httpProxy := C.GoString(cHttpProxy)
+		userAgent := C.GoString(cUserAgent)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancelRegistry.Store(int32(token), func() { cancel() })
-	defer cancelRegistry.Delete(int32(token))
-	defer progressStore.Delete(int32(token))
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelRegistry.Store(int32(token), func() { cancel() })
+		defer cancelRegistry.Delete(int32(token))
+		defer progressStore.Delete(int32(token))
 
-	result, err := runFetchAndValid(ctx, int32(token), workDir, rawURL, force != 0, httpProxy, userAgent)
-	if err != nil {
-		return C.CString("error: " + err.Error())
-	}
-	payload, _ := json.Marshal(result)
-	return C.CString(string(payload))
+		result, err := runFetchAndValid(ctx, int32(token), workDir, rawURL, force != 0, httpProxy, userAgent)
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		payload, _ := json.Marshal(result)
+		return string(payload)
+	})
 }
 
 func runFetchAndValid(

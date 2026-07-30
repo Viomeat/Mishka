@@ -6,6 +6,7 @@ package main
 import "C"
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +16,17 @@ import (
 	"github.com/metacubex/mihomo/component/http"
 	"github.com/metacubex/mihomo/constant"
 )
+
+// panic 逸出 //export 边界会终止宿主进程——JNI 是 in-process，死的是整个 app。
+// 这里收口成 "error: " 协议；只覆盖同一 goroutine，fatal error 无解。
+func guardString(fn func() string) (ret *C.char) {
+	defer func() {
+		if r := recover(); r != nil {
+			ret = C.CString(fmt.Sprintf("error: panic: %v", r))
+		}
+	}()
+	return C.CString(fn())
+}
 
 var (
 	cancelRegistry  sync.Map // map[int32]func()
@@ -82,11 +94,13 @@ func mishkaSetAgeSecretKey(cKey *C.char) {
 // 生成 x25519 age 密钥对，返回 "secretKey\npublicKey"；失败返回 "error: ..."。
 // 调用方必须 mishkaFreeString 释放返回值。
 func mishkaGenAgeKeyPair() *C.char {
-	sk, pk, err := age.GenX25519KeyPair()
-	if err != nil {
-		return C.CString("error: " + err.Error())
-	}
-	return C.CString(sk + "\n" + pk)
+	return guardString(func() string {
+		sk, pk, err := age.GenX25519KeyPair()
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		return sk + "\n" + pk
+	})
 }
 
 //export mishkaGenAgeHybridKeyPair
@@ -94,11 +108,13 @@ func mishkaGenAgeKeyPair() *C.char {
 // 生成 mlkem768-x25519 抗量子 age 密钥对，返回 "secretKey\npublicKey"；失败返回 "error: ..."。
 // 调用方必须 mishkaFreeString 释放返回值。
 func mishkaGenAgeHybridKeyPair() *C.char {
-	sk, pk, err := age.GenHybridKeyPair()
-	if err != nil {
-		return C.CString("error: " + err.Error())
-	}
-	return C.CString(sk + "\n" + pk)
+	return guardString(func() string {
+		sk, pk, err := age.GenHybridKeyPair()
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		return sk + "\n" + pk
+	})
 }
 
 func main() {}
