@@ -26,11 +26,14 @@ object RootHelper {
 
     /**
      * 后台启动 mihomo，重定向输出到日志文件，返回真实 PID。
+     *
+     * args 含密钥，逐个转义且不进日志。
      */
     fun startAsRoot(binary: String, args: Array<String>, workDir: String, logFile: String): Int {
-        val argsStr = args.joinToString(" ") { "\"$it\"" }
-        val command = "cd \"$workDir\" || exit 1; \"$binary\" $argsStr > \"$logFile\" 2>&1 & echo \$!"
-        Log.i(TAG, "Starting as root: su -c \"$command\"")
+        val argsStr = args.joinToString(" ") { escapeShellSingleQuoted(it) }
+        val command = "cd ${escapeShellSingleQuoted(workDir)} || exit 1; " +
+            "${escapeShellSingleQuoted(binary)} $argsStr > ${escapeShellSingleQuoted(logFile)} 2>&1 & echo \$!"
+        Log.i(TAG, "Starting as root: ${redactArgs(args)}")
         return try {
             val process = ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
@@ -49,7 +52,8 @@ object RootHelper {
 
     fun readLogFile(logFile: String, maxLines: Int = 20): String {
         return try {
-            val process = ProcessBuilder("su", "-c", "tail -n $maxLines \"$logFile\" 2>/dev/null")
+            val path = escapeShellSingleQuoted(logFile)
+            val process = ProcessBuilder("su", "-c", "tail -n $maxLines $path 2>/dev/null")
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
@@ -138,7 +142,7 @@ object RootHelper {
     private fun cleanupRootNetwork(tunDevice: String) {
         try {
             Log.i(TAG, "Cleaning up root network state")
-            runRootCommand("ip link delete $tunDevice 2>/dev/null; true")
+            runRootCommand("ip link delete ${escapeShellSingleQuoted(tunDevice)} 2>/dev/null; true")
         } catch (_: Exception) {
         }
     }
@@ -233,11 +237,23 @@ object RootHelper {
     }
 
     /**
-     * POSIX shell 单引号转义：外层用单引号包裹，内部单引号替换为 `'\''`。
-     * 防止用户可配置的 device name 注入命令（Settings 已有正则约束，此处是 defense in depth）。
+     * POSIX shell 单引号转义。上游不做字符校验，这里是唯一防线：
+     * 任何外部值进 `su -c` 前都要过它——双引号挡不住 `$(...)`。
      */
     internal fun escapeShellSingleQuoted(s: String): String =
         "'" + s.replace("'", "'\\''") + "'"
+
+    /** 密钥类参数在日志里只留 flag 名。 */
+    private fun redactArgs(args: Array<String>): String {
+        var maskNext = false
+        return args.joinToString(" ") { arg ->
+            when {
+                maskNext -> "***".also { maskNext = false }
+                arg == "--secret" || arg == "--age-secret-key" -> arg.also { maskNext = true }
+                else -> arg
+            }
+        }
+    }
 
     /**
      * 以 root 身份 rm -rf 指定路径。调用方自行保证路径语义（仅用于 app 自己的数据目录下）。
