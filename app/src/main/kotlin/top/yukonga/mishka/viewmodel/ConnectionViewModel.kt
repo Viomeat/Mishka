@@ -57,6 +57,8 @@ class ConnectionViewModel : ViewModel() {
 
         connectionJob = viewModelScope.launch {
             repo.connectionsFlow().collect { response ->
+                // 上游带缓冲，cancel 之外还需身份校验，否则旧 repo 的滞留帧会覆盖新数据
+                if (repository !== repo) return@collect
                 _uiState.value = _uiState.value.copy(
                     connections = response.connections.toPersistentList(),
                     downloadTotal = response.downloadTotal,
