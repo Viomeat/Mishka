@@ -81,6 +81,11 @@ object RootTetherHijacker {
     private const val IPT_LOCK_RETRIES = 3
     private const val IPT_LOCK_RETRY_DELAY_MS = 300L
 
+    // 秒数并进令牌，脚本里不再单独写 -w：裸 -w 是无限等待，撞锁会让启动链永久挂起
+    private val IPT4 = "iptables -w $IPT_WAIT_SECONDS"
+    private val IPT6 = "ip6tables -w $IPT_WAIT_SECONDS"
+    private val IPT_BINS = listOf(IPT4, IPT6)
+
     // iptables 抢锁失败的退出码（resource problem）
     private const val IPT_RESOURCE_PROBLEM_CODE = 4
 
@@ -104,12 +109,12 @@ object RootTetherHijacker {
      */
     fun probeTproxySupport(): Boolean {
         val probeName = "mishka_probe_${System.currentTimeMillis() % 1_000_000}"
-        val cmd = "iptables -w $IPT_WAIT_SECONDS -t mangle -N $probeName 2>/dev/null; " +
-                "iptables -w $IPT_WAIT_SECONDS -t mangle -A $probeName -p tcp -j TPROXY " +
+        val cmd = "$IPT4 -t mangle -N $probeName 2>/dev/null; " +
+                "$IPT4 -t mangle -A $probeName -p tcp -j TPROXY " +
                 "--on-ip 127.0.0.1 --on-port 1 --tproxy-mark 0x1/0x1; " +
                 "rc=\$?; " +
-                "iptables -w $IPT_WAIT_SECONDS -t mangle -F $probeName 2>/dev/null; " +
-                "iptables -w $IPT_WAIT_SECONDS -t mangle -X $probeName 2>/dev/null; " +
+                "$IPT4 -t mangle -F $probeName 2>/dev/null; " +
+                "$IPT4 -t mangle -X $probeName 2>/dev/null; " +
                 "exit \$rc"
         repeat(IPT_LOCK_RETRIES) { attempt ->
             val r = runWithOutput(cmd, timeoutSeconds = IPT_WAIT_SECONDS + 5L)
@@ -187,23 +192,23 @@ object RootTetherHijacker {
 
         // 1. 专用 mangle chain（主链 + DIVERT 子链）
         sb.appendLine("# === 1. create chains ===")
-        for (bin in listOf("iptables", "ip6tables")) {
-            sb.appendLine("$bin -w -t mangle -N $CHAIN_NAME 2>/dev/null")
-            sb.appendLine("$bin -w -t mangle -N $CHAIN_DIVERT_NAME 2>/dev/null")
+        for (bin in IPT_BINS) {
+            sb.appendLine("$bin -t mangle -N $CHAIN_NAME 2>/dev/null")
+            sb.appendLine("$bin -t mangle -N $CHAIN_DIVERT_NAME 2>/dev/null")
         }
 
         // 2. DIVERT 子链：ESTABLISHED 流快速通道（MARK + ACCEPT 终止本链匹配）
         sb.appendLine("# === 2. DIVERT chain (fast path for ESTABLISHED) ===")
-        for (bin in listOf("iptables", "ip6tables")) {
-            sb.appendLine("$bin -w -t mangle -A $CHAIN_DIVERT_NAME -j MARK --set-xmark $TPROXY_MARK/$TPROXY_MASK ${tag("divert-mark")}")
-            sb.appendLine("$bin -w -t mangle -A $CHAIN_DIVERT_NAME -j ACCEPT ${tag("divert-accept")}")
+        for (bin in IPT_BINS) {
+            sb.appendLine("$bin -t mangle -A $CHAIN_DIVERT_NAME -j MARK --set-xmark $TPROXY_MARK/$TPROXY_MASK ${tag("divert-mark")}")
+            sb.appendLine("$bin -t mangle -A $CHAIN_DIVERT_NAME -j ACCEPT ${tag("divert-accept")}")
         }
 
         // 3a. 主链头部：丢弃 conntrack INVALID 包（协议栈异常 / 序列号乱跳 / 校验失败），
         //     避免无效包浪费下游 -m socket 查询与 TPROXY 目标匹配
         sb.appendLine("# === 3a. drop INVALID ===")
-        for (bin in listOf("iptables", "ip6tables")) {
-            sb.appendLine("$bin -w -t mangle -A $CHAIN_NAME -m conntrack --ctstate INVALID -j DROP ${tag("invalid-drop")} 2>/dev/null")
+        for (bin in IPT_BINS) {
+            sb.appendLine("$bin -t mangle -A $CHAIN_NAME -m conntrack --ctstate INVALID -j DROP ${tag("invalid-drop")} 2>/dev/null")
         }
 
         // 3. 主链头部：intranet RETURN（除 UDP/53 外）
@@ -211,30 +216,30 @@ object RootTetherHijacker {
         //    直接跳出，不进 DIVERT / TPROXY。DNS 留给 TPROXY 让 mihomo 处理 fake-ip。
         sb.appendLine("# === 3. intranet RETURN (except UDP/53) ===")
         for (net in IptablesIntranet.V4) {
-            sb.appendLine("iptables -w -t mangle -A $CHAIN_NAME -d $net -p udp ! --dport 53 -j RETURN ${tag("intranet-v4")}")
-            sb.appendLine("iptables -w -t mangle -A $CHAIN_NAME -d $net ! -p udp -j RETURN ${tag("intranet-v4")}")
+            sb.appendLine("$IPT4 -t mangle -A $CHAIN_NAME -d $net -p udp ! --dport 53 -j RETURN ${tag("intranet-v4")}")
+            sb.appendLine("$IPT4 -t mangle -A $CHAIN_NAME -d $net ! -p udp -j RETURN ${tag("intranet-v4")}")
         }
         for (net in IptablesIntranet.V6) {
-            sb.appendLine("ip6tables -w -t mangle -A $CHAIN_NAME -d $net -p udp ! --dport 53 -j RETURN ${tag("intranet-v6")} 2>/dev/null")
-            sb.appendLine("ip6tables -w -t mangle -A $CHAIN_NAME -d $net ! -p udp -j RETURN ${tag("intranet-v6")} 2>/dev/null")
+            sb.appendLine("$IPT6 -t mangle -A $CHAIN_NAME -d $net -p udp ! --dport 53 -j RETURN ${tag("intranet-v6")} 2>/dev/null")
+            sb.appendLine("$IPT6 -t mangle -A $CHAIN_NAME -d $net ! -p udp -j RETURN ${tag("intranet-v6")} 2>/dev/null")
         }
 
         // 4. 已有 socket → DIVERT（跳过 TPROXY 重拦截）
         sb.appendLine("# === 4. established socket → DIVERT ===")
-        for (bin in listOf("iptables", "ip6tables")) {
-            sb.appendLine("$bin -w -t mangle -A $CHAIN_NAME -p tcp -m socket -j $CHAIN_DIVERT_NAME ${tag("divert-match-tcp")}")
-            sb.appendLine("$bin -w -t mangle -A $CHAIN_NAME -p udp -m socket -j $CHAIN_DIVERT_NAME ${tag("divert-match-udp")}")
+        for (bin in IPT_BINS) {
+            sb.appendLine("$bin -t mangle -A $CHAIN_NAME -p tcp -m socket -j $CHAIN_DIVERT_NAME ${tag("divert-match-tcp")}")
+            sb.appendLine("$bin -t mangle -A $CHAIN_NAME -p udp -m socket -j $CHAIN_DIVERT_NAME ${tag("divert-match-udp")}")
         }
 
         // 5. 新连接 → TPROXY 到 mihomo tproxy-port
         sb.appendLine("# === 5. new flows → TPROXY ===")
         for (proto in listOf("tcp", "udp")) {
             sb.appendLine(
-                "iptables -w -t mangle -A $CHAIN_NAME -p $proto -j TPROXY " +
+                "$IPT4 -t mangle -A $CHAIN_NAME -p $proto -j TPROXY " +
                         "--on-ip 127.0.0.1 --on-port $TPROXY_PORT --tproxy-mark $TPROXY_MARK/$TPROXY_MASK ${tag("tproxy-$proto")}"
             )
             sb.appendLine(
-                "ip6tables -w -t mangle -A $CHAIN_NAME -p $proto -j TPROXY " +
+                "$IPT6 -t mangle -A $CHAIN_NAME -p $proto -j TPROXY " +
                         "--on-ip ::1 --on-port $TPROXY_PORT --tproxy-mark $TPROXY_MARK/$TPROXY_MASK ${tag("tproxy-$proto-v6")} 2>/dev/null"
             )
         }
@@ -243,8 +248,8 @@ object RootTetherHijacker {
         sb.appendLine("# === 6. attach PREROUTING per tether iface ===")
         for (iface in interfaces) {
             val esc = RootHelper.escapeShellSingleQuoted(iface)
-            sb.appendLine("iptables -w -t mangle -A PREROUTING -i $esc -j $CHAIN_NAME ${tag("prejump")}")
-            sb.appendLine("ip6tables -w -t mangle -A PREROUTING -i $esc -j $CHAIN_NAME ${tag("prejump-v6")} 2>/dev/null")
+            sb.appendLine("$IPT4 -t mangle -A PREROUTING -i $esc -j $CHAIN_NAME ${tag("prejump")}")
+            sb.appendLine("$IPT6 -t mangle -A PREROUTING -i $esc -j $CHAIN_NAME ${tag("prejump-v6")} 2>/dev/null")
         }
 
         // 7. 策略路由：fwmark → 专用表；表里声明整个地址空间为 local → 内核在 PREROUTING
@@ -389,7 +394,7 @@ object RootTetherHijacker {
             if (v4Rules.lineSequence().any { it.startsWith("$pri:") }) residual += "v4 ip rule priority $pri"
             if (v6Rules.lineSequence().any { it.startsWith("$pri:") }) residual += "v6 ip rule priority $pri"
         }
-        for (bin in listOf("iptables", "ip6tables")) {
+        for (bin in IPT_BINS) {
             val mangle = runWithOutput("$bin -t mangle -S").output
             if (mangle.contains(CHAIN_NAME)) residual += "$bin mangle chain $CHAIN_NAME present"
             if (mangle.contains(CHAIN_DIVERT_NAME)) residual += "$bin mangle chain $CHAIN_DIVERT_NAME present"
@@ -419,7 +424,7 @@ object RootTetherHijacker {
         // apply 时规则是 `-A PREROUTING -i <iface> -j mishka_tether`，teardown 必须精确匹配
         // （iptables -D 不接受模糊匹配），所以列出所有引用 CHAIN_NAME 的 PREROUTING 规则
         // 把原文 `-A PREROUTING ...` 改为 `-D PREROUTING ...` 逐条执行
-        for (bin in listOf("iptables", "ip6tables")) {
+        for (bin in IPT_BINS) {
             deletePreroutingJumpsReferencing(bin, CHAIN_NAME)
             runWithOutput("$bin -t mangle -F $CHAIN_NAME")
             runWithOutput("$bin -t mangle -X $CHAIN_NAME")
@@ -515,10 +520,13 @@ object RootTetherHijacker {
     private fun ShellResult.isXtablesLockFailure(): Boolean =
         code == IPT_RESOURCE_PROBLEM_CODE || output.contains("xtables lock", ignoreCase = true)
 
-    /** 给 iptables/ip6tables 补 `-w`（排队等锁）。已带 `-w` 或非 iptables 命令原样返回 */
+    /** 只认带数字的 `-w`：裸 `-w` 是无限等待，等同于没带。 */
+    private val IPT_WAIT_PRESENT = Regex("""\s-w\s+\d""")
+
+    /** 给 iptables/ip6tables 补 `-w <秒>`。已带秒数或非 iptables 命令原样返回 */
     private fun withIptablesWait(command: String): String {
         if (!command.startsWith("iptables ") && !command.startsWith("ip6tables ")) return command
-        if (command.contains(" -w ")) return command
+        if (IPT_WAIT_PRESENT.containsMatchIn(command)) return command
         return command.replaceFirst(Regex("^(ip6?tables)\\s+"), "$1 -w $IPT_WAIT_SECONDS ")
     }
 
@@ -527,13 +535,8 @@ object RootTetherHijacker {
             val process = ProcessBuilder("su", "-c", withIptablesWait(command))
                 .redirectErrorStream(true)   // 合并 stderr，失败原因会进 output
                 .start()
-            val output = process.inputStream.bufferedReader().readText().trim()
-            val exited = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            if (!exited) {
-                process.destroyForcibly()
-                return ShellResult(-1, "<timeout>\n$output")
-            }
-            ShellResult(process.exitValue(), output)
+            val (code, output) = RootHelper.awaitDrained(process, timeoutSeconds)
+            ShellResult(code, output)
         } catch (e: Exception) {
             ShellResult(-1, e.message ?: e.javaClass.simpleName)
         }

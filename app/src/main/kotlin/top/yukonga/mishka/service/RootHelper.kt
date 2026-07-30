@@ -7,6 +7,35 @@ object RootHelper {
 
     private const val TAG = "RootHelper"
 
+    internal data class ShellOutcome(val code: Int, val output: String)
+
+    /**
+     * 读干 stdout 并等待退出，超时强杀。
+     *
+     * 独立线程读是必须的：当前线程 `readText()` 阻塞到 EOF，而等锁的子进程永不 EOF，
+     * 后面的 `waitFor(timeout)` 就成了死代码。只等不读则撑爆 64KB 管道缓冲。
+     */
+    internal fun awaitDrained(process: Process, timeoutSeconds: Long): ShellOutcome {
+        val buffer = StringBuffer()
+        val drain = Thread {
+            runCatching {
+                process.inputStream.bufferedReader().forEachLine { buffer.append(it).append('\n') }
+            }
+        }.apply { isDaemon = true; start() }
+
+        val exited = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+        if (!exited) {
+            process.destroyForcibly()
+            drain.join(DRAIN_JOIN_MS)
+            return ShellOutcome(-1, "<timeout>\n$buffer")
+        }
+        drain.join(DRAIN_JOIN_MS)
+        return ShellOutcome(process.exitValue(), buffer.toString().trim())
+    }
+
+    /** 进程退出后管道很快 EOF，给读线程一点收尾时间。 */
+    private const val DRAIN_JOIN_MS = 500L
+
     fun hasRootAccess(): Boolean {
         return try {
             val process = ProcessBuilder("su", "-c", "id")
@@ -290,15 +319,10 @@ object RootHelper {
                 .redirectErrorStream(true)
                 .start()
             process.outputStream.bufferedWriter().use { it.write(script); it.flush() }
-            val output = process.inputStream.bufferedReader().readText()
-            val exited = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            if (!exited) {
-                process.destroyForcibly()
-                Log.e(TAG, "runRootScriptHeredoc timed out\noutput:\n$output")
-                return -1
-            }
-            val code = process.exitValue()
-            if (code != 0 && output.isNotBlank()) {
+            val (code, output) = awaitDrained(process, timeoutSeconds)
+            if (code == -1) {
+                Log.e(TAG, "runRootScriptHeredoc timed out\noutput:\n${output.take(2000)}")
+            } else if (code != 0 && output.isNotBlank()) {
                 Log.w(TAG, "runRootScriptHeredoc code=$code output:\n${output.take(2000)}")
             }
             code
