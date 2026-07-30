@@ -2,12 +2,17 @@ package top.yukonga.mishka.service
 
 import android.content.Context
 import java.io.File
+import java.io.IOException
 
 /**
  * 订阅文件操作。三阶段目录：pending → processing → imported。
  * processing 是单例目录，串行使用。
  */
 object ProfileFileOps {
+
+    // 回滚目录带 uuid：进程死在两次 rename 之间时，靠它还原 imported/{uuid}/
+    private const val COMMIT_STAGING = "commit.new"
+    private const val COMMIT_OLD_PREFIX = "commit.old."
 
     private fun getWorkDir(context: Context): File {
         val dir = File(context.filesDir, "mihomo")
@@ -91,28 +96,60 @@ object ProfileFileOps {
         return file
     }
 
+    /** 清 processing/ 与提交残留；commit.old.{uuid} 在 imported/{uuid}/ 缺失时用于还原。 */
     fun cleanupProcessing(context: Context) {
-        val processing = File(getWorkDir(context), "processing")
+        val workDir = getWorkDir(context)
+        val processing = File(workDir, "processing")
         if (processing.exists()) processing.deleteRecursively()
+        File(workDir, COMMIT_STAGING).deleteRecursively()
+        workDir.listFiles { f -> f.isDirectory && f.name.startsWith(COMMIT_OLD_PREFIX) }
+            ?.forEach { saved ->
+                val imported = File(workDir, "imported/${saved.name.removePrefix(COMMIT_OLD_PREFIX)}")
+                if (imported.exists()) removeMaybeRootOwned(saved) else saved.renameTo(imported)
+            }
     }
 
     /**
-     * 提交：清 imported/{uuid}/ → 复制 processing/ → imported/{uuid}/ → 删 pending/{uuid}/。
-     * 用 copy 而非 move：processing 残留由下次 prepareProcessing 清理。
+     * 提交：processing/ 拷进 commit.new/，再 rename 换入 imported/{uuid}/，最后删 pending/{uuid}/。
+     *
+     * 拷贝排在所有删除之前，失败时 imported/{uuid}/ 仍完整——update 路径下它是唯一副本。
      */
     fun commitProcessingToImported(context: Context, uuid: String) {
+        val workDir = getWorkDir(context)
         val processing = getProcessingDir(context)
-        val imported = File(getWorkDir(context), "imported/$uuid")
-        val pending = File(getWorkDir(context), "pending/$uuid")
-        // 旧版本 ROOT 模式可能在 imported/ 里留下 root:root 文件，Kotlin delete 失败后走 su 兜底
-        if (imported.exists() && !imported.deleteRecursively()) {
-            RootHelper.rmRfAsRoot(imported.absolutePath)
+        val imported = File(workDir, "imported/$uuid")
+        val pending = File(workDir, "pending/$uuid")
+        val staging = File(workDir, COMMIT_STAGING)
+        val old = File(workDir, "$COMMIT_OLD_PREFIX$uuid")
+
+        staging.deleteRecursively()
+        removeMaybeRootOwned(old)
+        try {
+            staging.mkdirs()
+            if (processing.exists()) processing.copyRecursively(staging, overwrite = true)
+        } catch (e: Throwable) {
+            staging.deleteRecursively()
+            throw e
         }
-        imported.mkdirs()
-        if (processing.exists()) {
-            processing.copyRecursively(imported, overwrite = true)
+
+        imported.parentFile?.mkdirs()
+        val movedAside = imported.exists() && imported.renameTo(old)
+        if (imported.exists()) {
+            staging.deleteRecursively()
+            throw IOException("Cannot move aside imported/$uuid")
         }
+        if (!staging.renameTo(imported)) {
+            if (movedAside) old.renameTo(imported)
+            staging.deleteRecursively()
+            throw IOException("Cannot swap in imported/$uuid")
+        }
+        if (movedAside) removeMaybeRootOwned(old)
         if (pending.exists()) pending.deleteRecursively()
+    }
+
+    /** 旧 ROOT 模式可能留下 root:root 文件，Kotlin 删不掉时走 su 兜底。 */
+    private fun removeMaybeRootOwned(dir: File) {
+        if (dir.exists() && !dir.deleteRecursively()) RootHelper.rmRfAsRoot(dir.absolutePath)
     }
 
     // === 删除与复制 ===
