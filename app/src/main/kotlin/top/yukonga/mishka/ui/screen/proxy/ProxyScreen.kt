@@ -208,6 +208,10 @@ fun ProxyScreen(
         }
     }
 
+    // 排序 + 分块上提缓存：content lambda 随 expandedGroups/testingNodes 等任一变化整体重跑，
+    // 不缓存则每次重组对每个展开组重排几百节点。key 取 groups 而非 uiState，懒填充跳过收起组
+    val rowsCache = remember(groups, sortOption) { HashMap<String, List<List<String>>>() }
+
     val backdrop = rememberBlurBackdrop()
     val blurActive = backdrop != null
     val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface
@@ -406,7 +410,9 @@ fun ProxyScreen(
                         val rowsPresent = isExpanded || group.name in retainedGroups
                         // 恒按 2 个分行：行数与 key 不随单列开关变化，morph 全在行内部
                         val rows = if (rowsPresent) {
-                            sortNodes(group.all, group.delays, sortOption).chunked(2)
+                            rowsCache.getOrPut(group.name) {
+                                sortNodes(group.all, group.delays, sortOption).chunked(2)
+                            }
                         } else {
                             emptyList()
                         }
