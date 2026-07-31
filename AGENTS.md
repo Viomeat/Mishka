@@ -22,6 +22,8 @@ Kotlin（AGP 9 内置，不加独立 kotlin 插件）+ KSP。UI：Compose（经 
 
 **Compose 稳定性**走 [compose_compiler_config.conf](app/compose_compiler_config.conf)，**只保留实测起作用的条目**（加之前先跑报告确认确有 unstable 参数），新增 unstable 的三方/平台字段优先进该文件而非散落 `@Stable`。三条易踩：① 条目对**子类生效**——`androidx.lifecycle.ViewModel` 一行覆盖全部 ViewModel，其内部字段稳定性因此完全不影响 composable 参数；② FQN 须与实际依赖一致，Room 3 是 `androidx.room3.*`（写 `androidx.room.*` 静默失配）；③ 只认整行 `//` 注释，行尾注释会被当成 matcher 内容。
 
+**注释写什么**：只写「读代码看不出来的」——踩坑根因、内核/并发时序约束、为什么不能改成另一种写法。**不写**复述下一行的标签（`// 排除自身` + `pkg != self`）、不写外部参考来源（「参考 xx example」「对齐 CFMA」）、不写版本沿革（「旧版…」「不再…」「修掉了历史版本的 bug」）——历史不在树里，读者只能凭空重建。`// === X ===` 分隔符用于给 200 行以上的文件分组**多个**声明，不给单个函数当标题。删注释前先判断它是不是唯一记录某条不变式的地方（本仓有十余处「删掉不会编译报错、但会静默出 bug」的注释）。
+
 ## 代码地图
 
 分层靠**包名**，跨层即普通包引用。约定（非 Gradle 强制）：`domain.model` 只放 `@Serializable` 模型、`domain.repository` 只放仓库接口，二者不引 android/compose/ktor/room。
