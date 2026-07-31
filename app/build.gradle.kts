@@ -1,3 +1,4 @@
+import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -134,32 +135,69 @@ androidComponents {
 }
 
 abstract class DownloadGeoFilesTask : DefaultTask() {
+    /** 下载地址 → 落盘文件名。声明为 @Input，改地址才会让任务失效重跑。 */
+    @get:Input
+    abstract val sources: MapProperty<String, String>
+
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
     @TaskAction
     fun download() {
-        val geoFilesUrls = mapOf(
-            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb" to "geoip.metadb",
-            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat" to "geosite.dat",
-//            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb" to "country.mmdb",
-            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb" to "ASN.mmdb",
-        )
         val dir = outputDir.get().asFile
         dir.mkdirs()
-        geoFilesUrls.forEach { (downloadUrl, outputFileName) ->
-            val outputPath = File(dir, outputFileName)
-            URI(downloadUrl).toURL().openStream().use { input ->
-                Files.copy(input, outputPath.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                println("$outputFileName downloaded to $outputPath")
+        sources.get().forEach { (downloadUrl, fileName) ->
+            val target = File(dir, fileName)
+            val partial = File(dir, "$fileName.part")
+            val connection = (URI(downloadUrl).toURL().openConnection() as HttpURLConnection).apply {
+                // 无超时时对端挂起就是构建无限期卡住，CI 上只表现为「这次特别慢」
+                connectTimeout = HTTP_TIMEOUT_MS
+                readTimeout = HTTP_TIMEOUT_MS
             }
+            try {
+                val status = connection.responseCode
+                check(status == HttpURLConnection.HTTP_OK) { "$downloadUrl responded HTTP $status" }
+                connection.inputStream.use {
+                    Files.copy(it, partial.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+            } finally {
+                connection.disconnect()
+            }
+            // 404 / 限流返回的 HTML 会被原样写成 geoip.metadb：构建全绿，运行时 GeoIP 加载失败。
+            // 三个数据文件最小的也有数 MB，下限足以拦住任何错误页
+            val size = partial.length()
+            if (size < MIN_FILE_BYTES) {
+                partial.delete()
+                error("$fileName is only $size bytes, expected a data file (bad URL or rate limited?)")
+            }
+            Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            logger.lifecycle("$fileName downloaded to $target ($size bytes)")
         }
+    }
+
+    private companion object {
+        const val HTTP_TIMEOUT_MS = 30_000
+        const val MIN_FILE_BYTES = 512 * 1024L
     }
 }
 
 val downloadGeoFiles = tasks.register<DownloadGeoFilesTask>("downloadGeoFiles") {
-    description = "downloadGeoFiles"
+    description = "Download the prebuilt GeoIP/GeoSite data files into the assets source set"
+    sources.set(
+        mapOf(
+            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb" to "geoip.metadb",
+            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat" to "geosite.dat",
+            "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb" to "ASN.mmdb",
+        )
+    )
     outputDir.set(layout.projectDirectory.dir("src/main/assets"))
+}
+
+// outputDir 既是本任务的 @OutputDirectory 又是 mergeAssets 的输入源。两者同时出现在一次
+// 调用里时，Gradle 会以「消费了未声明依赖的任务输出」中止构建；下载仍保持手动 / CI 触发
+// （需要网络，不该挂进 assemble），这里只补上先后关系
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    mustRunAfter(downloadGeoFiles)
 }
 
 val mihomoSubmoduleDir = rootProject.layout.projectDirectory.dir("mihomo")
