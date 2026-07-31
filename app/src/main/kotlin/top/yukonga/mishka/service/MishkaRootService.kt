@@ -21,7 +21,6 @@ import top.yukonga.mishka.R
 import top.yukonga.mishka.data.database.getAppDatabase
 import top.yukonga.mishka.data.repository.OverrideJsonStore
 import top.yukonga.mishka.domain.model.resolveExternalController
-import top.yukonga.mishka.domain.model.resolveSecretOrNull
 import top.yukonga.mishka.platform.AppListProvider
 import top.yukonga.mishka.platform.BootSession
 import top.yukonga.mishka.platform.PlatformStorage
@@ -347,11 +346,8 @@ class MishkaRootService : Service() {
 
             // 4. 装配 override.run.json
             // secret / extCtl 走 CLI flag 不进 JSON
-            // secret 解析优先级：用户 override > 订阅 config.yaml 中的 secret > 随机生成
             val userOverride = overrideStore.load()
-            val secret = userOverride.resolveSecretOrNull()
-                ?: subscriptionId?.let { ConfigGenerator.readSubscriptionSecret(this@MishkaRootService, it) }
-                ?: ConfigGenerator.generateSecret()
+            val secret = ConfigGenerator.resolveSecret(this@MishkaRootService, userOverride, subscriptionId)
             val extCtl = userOverride.resolveExternalController()
             // 仅 TUN submode 且用户选 PROXY 时才探测 xt_TPROXY 为 RootTetherHijacker 开 tproxy-port 入站；
             // 探测结果同步写入 StorageKeys.ROOT_TPROXY_KERNEL_CAPABLE，UI 据此决定是否显示降级告警

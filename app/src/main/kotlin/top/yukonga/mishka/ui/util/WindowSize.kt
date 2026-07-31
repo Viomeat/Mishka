@@ -1,5 +1,6 @@
 package top.yukonga.mishka.ui.util
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -15,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import top.yukonga.mishka.ui.theme.LocalPlatformDensity
+import top.yukonga.miuix.kmp.anim.folmeSpring
 
 /** 宽屏阈值：窗口宽度达到此值时启用侧边导航栏与内容居中（平板、横屏、展开态折叠屏、桌面）。 */
 private val WideScreenMinWidth = 600.dp
@@ -82,4 +85,14 @@ fun Modifier.horizontalCutoutPadding(): Modifier = windowInsetsPadding(
 @Composable
 fun Modifier.sheetContentSafePadding(): Modifier = windowInsetsPadding(
     WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom),
+)
+
+/**
+ * BottomSheet 内容的高度过渡。sheet 是 `wrapContentHeight`、高度完全跟随内容且自身无动画，
+ * loading 切列表、条数增减都会整体硬跳。
+ *
+ * spec 与 sheet 的入场动画同参（[folmeSpring] 是 miuix public API，别自己凑 spring 参数）。
+ */
+fun Modifier.sheetHeightTransition(): Modifier = animateContentSize(
+    folmeSpring(damping = 0.9f, response = 0.38f, visibilityThreshold = IntSize(1, 1)),
 )

@@ -1,6 +1,5 @@
 package top.yukonga.mishka.ui.screen.home
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,16 +19,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.collections.immutable.ImmutableList
 import top.yukonga.mishka.R
 import top.yukonga.mishka.ui.theme.StatusColors
 import top.yukonga.mishka.ui.util.sheetContentSafePadding
+import top.yukonga.mishka.ui.util.sheetHeightTransition
 import top.yukonga.mishka.util.FormatUtils
 import top.yukonga.mishka.viewmodel.ConnectionRate
-import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -73,8 +71,7 @@ internal fun SpeedDetailSheet(
                 .fillMaxWidth()
                 .sheetContentSafePadding()
                 .heightIn(min = 200.dp)
-                // sheet 是 wrapContentHeight，内容高度一变就整体跳；spec 与其入场动画同参
-                .animateContentSize(folmeSpring(damping = 0.9f, response = 0.38f, visibilityThreshold = IntSize(1, 1))),
+                .sheetHeightTransition(),
         ) {
             when {
                 rates == null -> CircularProgressIndicator(

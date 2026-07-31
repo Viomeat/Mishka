@@ -1,6 +1,8 @@
 package top.yukonga.mishka.service
 
 import android.content.Context
+import top.yukonga.mishka.domain.model.ConfigurationOverride
+import top.yukonga.mishka.domain.model.resolveSecretOrNull
 import java.io.File
 import java.util.UUID
 
@@ -11,6 +13,18 @@ import java.util.UUID
 object ConfigGenerator {
 
     fun generateSecret(): String = UUID.randomUUID().toString().take(16)
+
+    /**
+     * external-controller 的 secret，优先级：用户 override > 订阅 config.yaml 顶层 `secret:` >
+     * 随机生成。两个 Service 都从这里取，别各写一份——它是「secret 优先级」这条约束的实现单点。
+     */
+    fun resolveSecret(
+        context: Context,
+        userOverride: ConfigurationOverride,
+        subscriptionId: String?,
+    ): String = userOverride.resolveSecretOrNull()
+        ?: subscriptionId?.let { readSubscriptionSecret(context, it) }
+        ?: generateSecret()
 
     fun getWorkDir(context: Context): File {
         val dir = File(context.filesDir, "mihomo")

@@ -1,6 +1,5 @@
 package top.yukonga.mishka.ui.screen.home
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +28,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.collections.immutable.ImmutableList
@@ -39,12 +37,12 @@ import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import top.yukonga.mishka.R
 import top.yukonga.mishka.ui.util.sheetContentSafePadding
+import top.yukonga.mishka.ui.util.sheetHeightTransition
 import top.yukonga.mishka.util.FormatUtils
 import top.yukonga.mishka.util.formatIsoTimeRelative
 import top.yukonga.mishka.viewmodel.MemorySnapshot
 import top.yukonga.mishka.viewmodel.ProviderTrafficInfo
 import top.yukonga.mishka.viewmodel.SystemInfoSnapshot
-import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -193,8 +191,7 @@ internal fun SubscriptionTrafficDialog(
                 .fillMaxWidth()
                 .sheetContentSafePadding()
                 .heightIn(min = 200.dp)
-                // sheet 是 wrapContentHeight，loading 切列表时高度会整体跳；spec 与其入场动画同参
-                .animateContentSize(folmeSpring(damping = 0.9f, response = 0.38f, visibilityThreshold = IntSize(1, 1))),
+                .sheetHeightTransition(),
         ) {
             when {
                 // 刷新期间隐藏旧数据，只显示加载指示器，成功后再展示新内容

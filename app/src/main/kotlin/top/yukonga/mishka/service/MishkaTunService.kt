@@ -22,7 +22,6 @@ import top.yukonga.mishka.R
 import top.yukonga.mishka.data.database.getAppDatabase
 import top.yukonga.mishka.data.repository.OverrideJsonStore
 import top.yukonga.mishka.domain.model.resolveExternalController
-import top.yukonga.mishka.domain.model.resolveSecretOrNull
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.ProxyServiceBridge
 import top.yukonga.mishka.platform.ProxyServiceController
@@ -304,10 +303,7 @@ class MishkaTunService : VpnService() {
 
             // 2. 装配 override.run.json（用户设置 + 运行时字段 tun.file-descriptor 等）
             // secret / extCtl 走 CLI flag 不进 JSON
-            // secret 解析优先级：用户 override > 订阅 config.yaml 中的 secret > 随机生成
-            val secret = userOverride.resolveSecretOrNull()
-                ?: subscriptionId?.let { ConfigGenerator.readSubscriptionSecret(this@MishkaTunService, it) }
-                ?: ConfigGenerator.generateSecret()
+            val secret = ConfigGenerator.resolveSecret(this@MishkaTunService, userOverride, subscriptionId)
             val extCtl = userOverride.resolveExternalController()
             val viaProxy = storage.getString(StorageKeys.SUBSCRIPTION_UPDATE_VIA_PROXY, "true") == "true"
             val subMixedPort = subscriptionId?.let {
