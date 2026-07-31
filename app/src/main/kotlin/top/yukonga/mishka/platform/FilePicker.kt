@@ -35,67 +35,38 @@ class FilePicker(private val activity: ComponentActivity) {
         launcher.launch(intent)
     }
 
-    // === 二进制备份文件（WebDAV 本地备份同款 zip）===
+    // === 二进制备份文档（WebDAV 本地备份同款 zip）===
+    // 只负责拿 Uri：备份可达数十 MB，读写留给数据层在 IO 上流式完成，不在这条主线程回调里搬内容
 
-    private var saveBytes: ByteArray? = null
-    private var saveCallback: ((Boolean?) -> Unit)? = null
+    private var saveCallback: ((Uri?) -> Unit)? = null
     private val saveLauncher = activity.registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri -> handleSaveResult(uri) }
+    ) { uri ->
+        val cb = saveCallback
+        saveCallback = null
+        cb?.invoke(uri)
+    }
 
-    private var pickBytesCallback: ((ByteArray?) -> Unit)? = null
-    private val pickBytesLauncher = activity.registerForActivityResult(
+    private var pickCallback: ((Uri?) -> Unit)? = null
+    private val pickLauncher = activity.registerForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> handlePickBytesResult(uri) }
+    ) { uri ->
+        val cb = pickCallback
+        pickCallback = null
+        cb?.invoke(uri)
+    }
 
-    /** 经 SAF 另存为文件。onResult：true 写入成功 / false 写入失败 / null 用户取消。 */
-    fun saveZipFile(suggestedName: String, bytes: ByteArray, onResult: (Boolean?) -> Unit) {
-        saveBytes = bytes
+    /** 经 SAF 新建文档作为写入目标；回调 null 表示用户取消。 */
+    fun createZipDocument(suggestedName: String, onResult: (Uri?) -> Unit) {
         saveCallback = onResult
         saveLauncher.launch(suggestedName)
     }
 
-    /** 经 SAF 选择文件并读全部字节；取消或读取失败返回 null。 */
-    fun pickZipFile(onResult: (ByteArray?) -> Unit) {
-        pickBytesCallback = onResult
+    /** 经 SAF 选择已有文档；回调 null 表示用户取消。 */
+    fun pickZipDocument(onResult: (Uri?) -> Unit) {
+        pickCallback = onResult
         // 不按 MIME 过滤：备份文件经网盘/传输工具流转后 provider 常报 octet-stream 等杂项类型
-        pickBytesLauncher.launch(arrayOf("*/*"))
-    }
-
-    private fun handleSaveResult(uri: Uri?) {
-        val bytes = saveBytes
-        val cb = saveCallback
-        saveBytes = null
-        saveCallback = null
-        if (uri == null || bytes == null) {
-            cb?.invoke(null)
-            return
-        }
-        val ok = try {
-            // "wt" 截断写：目标文档已存在且比新内容长时，默认模式会残留旧尾部导致 zip 损坏
-            activity.contentResolver.openOutputStream(uri, "wt")?.use {
-                it.write(bytes)
-                true
-            } ?: false
-        } catch (_: Exception) {
-            false
-        }
-        cb?.invoke(ok)
-    }
-
-    private fun handlePickBytesResult(uri: Uri?) {
-        val cb = pickBytesCallback
-        pickBytesCallback = null
-        if (uri == null) {
-            cb?.invoke(null)
-            return
-        }
-        val bytes = try {
-            activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        } catch (_: Exception) {
-            null
-        }
-        cb?.invoke(bytes)
+        pickLauncher.launch(arrayOf("*/*"))
     }
 
     private fun handleResult(result: ActivityResult) {

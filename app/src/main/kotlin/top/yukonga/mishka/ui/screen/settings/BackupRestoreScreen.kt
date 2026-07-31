@@ -190,15 +190,15 @@ fun BackupRestoreScreen(
             onDismiss = { showLocalDialog = false },
             onExport = {
                 showLocalDialog = false
-                viewModel.exportBackup { bytes, onResult ->
-                    filePicker.saveZipFile(defaultBackupFileName(), bytes, onResult)
+                viewModel.exportBackup { onResult ->
+                    filePicker.createZipDocument(defaultBackupFileName(), onResult)
                 }
             },
             onRestore = {
                 showLocalDialog = false
                 pendingRestoreAction = {
-                    filePicker.pickZipFile { bytes ->
-                        if (bytes != null) viewModel.restoreFromBytes(bytes)
+                    filePicker.pickZipDocument { uri ->
+                        if (uri != null) viewModel.restoreFromDocument(uri)
                     }
                 }
             },

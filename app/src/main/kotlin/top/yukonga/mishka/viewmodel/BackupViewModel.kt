@@ -1,6 +1,7 @@
 package top.yukonga.mishka.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -55,39 +56,42 @@ class BackupViewModel(
 
     fun backup() = runBusy {
         val client = client() ?: return@runBusy
-        client.upload(backupManager.createBackup())
+        backupManager.withTransferFile { file ->
+            backupManager.writeBackupTo(file)
+            client.upload(file)
+        }
         showToast(context.getString(R.string.backup_done))
     }
 
     fun restore() = runBusy {
         if (!ensureProxyStopped()) return@runBusy
         val client = client() ?: return@runBusy
-        val bytes = client.download()
-        if (bytes == null) {
-            showToast(context.getString(R.string.backup_not_found))
-            return@runBusy
-        }
-        backupManager.restoreBackup(bytes)
-        _uiState.update { it.copy(restoreCompleted = true) }
-    }
-
-    /** 本地导出：打包后交给 [save]（SAF CreateDocument）写盘。结果回调 null 表示用户取消，不提示。 */
-    fun exportBackup(save: (bytes: ByteArray, onResult: (Boolean?) -> Unit) -> Unit) = runBusy {
-        val bytes = backupManager.createBackup()
-        val ok = suspendCancellableCoroutine { cont ->
-            save(bytes) { result -> cont.resume(result) }
-        }
-        when (ok) {
-            true -> showToast(context.getString(R.string.backup_export_done))
-            false -> showToast(context.getString(R.string.backup_local_save_failed))
-            null -> Unit
+        backupManager.withTransferFile { file ->
+            if (!client.download(file)) {
+                showToast(context.getString(R.string.backup_not_found))
+                return@withTransferFile
+            }
+            backupManager.restoreBackupFrom(file)
+            _uiState.update { it.copy(restoreCompleted = true) }
         }
     }
 
-    /** 本地导入：SAF 已读出的 zip 字节。前置校验与 WebDAV 恢复一致。 */
-    fun restoreFromBytes(bytes: ByteArray) = runBusy {
+    /**
+     * 本地导出：[pickTarget] 弹 SAF CreateDocument 拿目标文档，写入由 BackupManager 流式完成。
+     * 用户取消（Uri 为 null）不提示。
+     */
+    fun exportBackup(pickTarget: (onResult: (Uri?) -> Unit) -> Unit) = runBusy {
+        val uri = suspendCancellableCoroutine<Uri?> { cont ->
+            pickTarget { result -> cont.resume(result) }
+        } ?: return@runBusy
+        backupManager.exportTo(uri)
+        showToast(context.getString(R.string.backup_export_done))
+    }
+
+    /** 本地导入：SAF 选中的 zip 文档。前置校验与 WebDAV 恢复一致。 */
+    fun restoreFromDocument(uri: Uri) = runBusy {
         if (!ensureProxyStopped()) return@runBusy
-        backupManager.restoreBackup(bytes)
+        backupManager.importFrom(uri)
         _uiState.update { it.copy(restoreCompleted = true) }
     }
 

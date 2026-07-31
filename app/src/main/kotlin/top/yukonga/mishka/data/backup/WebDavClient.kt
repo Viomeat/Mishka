@@ -2,17 +2,25 @@ package top.yukonga.mishka.data.backup
 
 import android.util.Base64
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.isSuccess
+import io.ktor.util.cio.readChannel
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.jvm.javaio.toInputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.net.URI
 
 class WebDavException(message: String) : Exception(message)
@@ -50,23 +58,32 @@ class WebDavClient(
     }
 
     /** 上传备份（覆盖写）。目录不存在时先 MKCOL 创建。 */
-    suspend fun upload(bytes: ByteArray) {
+    suspend fun upload(file: File) {
         buildClient().use { client ->
             client.ensureDir()
-            val resp = client.davRequest(fileUrl, HttpMethod.Put, payload = bytes)
+            val resp = client.davRequest(fileUrl, HttpMethod.Put, payload = file)
             if (!resp.status.isSuccess()) {
                 throw WebDavException("PUT failed: HTTP ${resp.status.value}")
             }
         }
     }
 
-    /** 下载备份；服务器上尚无备份（404）返回 null。 */
-    suspend fun download(): ByteArray? {
+    /** 下载备份到 [target]；服务器上尚无备份（404）返回 false。 */
+    suspend fun download(target: File): Boolean {
         buildClient().use { client ->
             val resp = client.davRequest(fileUrl, HttpMethod.Get)
             return when {
-                resp.status == HttpStatusCode.NotFound -> null
-                resp.status.isSuccess() -> resp.body<ByteArray>()
+                resp.status == HttpStatusCode.NotFound -> false
+                resp.status.isSuccess() -> {
+                    // 备份可达数十 MB，落盘而非整包进堆
+                    withContext(Dispatchers.IO) {
+                        resp.bodyAsChannel().toInputStream().use { input ->
+                            target.outputStream().use { input.copyTo(it) }
+                        }
+                    }
+                    true
+                }
+
                 else -> throw WebDavException("GET failed: HTTP ${resp.status.value}")
             }
         }
@@ -100,7 +117,7 @@ class WebDavClient(
     private suspend fun HttpClient.davRequest(
         url: String,
         httpMethod: HttpMethod,
-        payload: ByteArray? = null,
+        payload: File? = null,
     ): HttpResponse {
         var current = url
         var hops = 0
@@ -108,10 +125,7 @@ class WebDavClient(
             val resp = request(current) {
                 method = httpMethod
                 header(HttpHeaders.Authorization, authorization)
-                if (payload != null) {
-                    header(HttpHeaders.ContentType, "application/zip")
-                    setBody(payload)
-                }
+                if (payload != null) setBody(payload.zipContent())
             }
             if (resp.status.value !in REDIRECT_CODES || hops >= MAX_REDIRECTS) return resp
             val location = resp.headers[HttpHeaders.Location] ?: return resp
@@ -126,6 +140,16 @@ class WebDavClient(
      * 跟随重定向时是否仍可安全携带 Basic 凭据。跨主机会把密码送给第三方；同主机的
      * https→http 降级则是把它明文发出去。允许 http→https 升级，禁止反向。
      */
+    /**
+     * 以文件为 body：带 Content-Length（部分 WebDAV 服务端拒绝 chunked PUT），
+     * 且重定向重发时可再读一遍。
+     */
+    private fun File.zipContent(): OutgoingContent = object : OutgoingContent.ReadChannelContent() {
+        override val contentType = ContentType.Application.Zip
+        override val contentLength = length()
+        override fun readFrom(): ByteReadChannel = readChannel()
+    }
+
     private fun URI.carriesCredentialsSafelyFrom(from: URI): Boolean {
         if (host == null || !host.equals(from.host, ignoreCase = true)) return false
         val fromHttps = from.scheme.equals("https", ignoreCase = true)

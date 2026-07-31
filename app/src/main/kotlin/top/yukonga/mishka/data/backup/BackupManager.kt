@@ -1,6 +1,7 @@
 package top.yukonga.mishka.data.backup
 
 import android.content.Context
+import android.net.Uri
 import androidx.room3.withWriteTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,9 +18,9 @@ import top.yukonga.mishka.platform.BootStartManager
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.service.ProfileFileOps
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -91,7 +92,26 @@ class BackupManager(
     private val mihomoDir: File
         get() = File(context.filesDir, "mihomo")
 
-    suspend fun createBackup(): ByteArray = ProfileProcessor.withProcessLock {
+    /** 打包到 SAF 文档。 */
+    suspend fun exportTo(uri: Uri) = withContext(Dispatchers.IO) {
+        // "wt" 截断写：目标文档已存在且比新内容长时，默认模式会残留旧尾部导致 zip 损坏
+        val out = context.contentResolver.openOutputStream(uri, "wt")
+            ?: throw BackupException("Cannot open $uri for writing")
+        out.use { writeBackup(it) }
+    }
+
+    /** 打包到普通文件（WebDAV 上传的中转）。 */
+    suspend fun writeBackupTo(file: File) = withContext(Dispatchers.IO) {
+        file.outputStream().use { writeBackup(it) }
+    }
+
+    /**
+     * 逐条目流式打包，整包不进内存。
+     *
+     * 备份内容可达数十 MB（provider 缓存），先攒成 ByteArray 再交出去等于把压缩包与它的
+     * 来源同时按在堆上，恢复侧再叠一份全量解压结果——恰好是最容易 OOM 的组合。
+     */
+    private suspend fun writeBackup(out: OutputStream) = ProfileProcessor.withProcessLock {
         withContext(Dispatchers.IO) {
             // 一次快照分两类装：dumpAll 每次加锁复制整张表，两次调用之间还可能被写入撕开
             val prefs = storage.dumpAll().filterKeys { it !in EXCLUDED_PREF_KEYS }
@@ -113,39 +133,55 @@ class BackupManager(
                 bootStartEnabled = bootStartManager.isEnabled(),
             )
 
-            ByteArrayOutputStream().use { bos ->
-                ZipOutputStream(bos).use { zip ->
-                    zip.putEntry(ENTRY_SNAPSHOT, json.encodeToString(snapshot).toByteArray())
-                    zipDirIfExists(zip, File(mihomoDir, "imported"), "$ENTRY_FILES_PREFIX/imported")
-                    zipDirIfExists(zip, File(mihomoDir, "pending"), "$ENTRY_FILES_PREFIX/pending")
-                    val override = File(mihomoDir, OVERRIDE_FILE)
-                    if (override.isFile) {
-                        zip.putEntry("$ENTRY_FILES_PREFIX/$OVERRIDE_FILE", override.readBytes())
-                    }
-                }
-                bos.toByteArray()
+            ZipOutputStream(out.buffered()).use { zip ->
+                zip.putEntry(ENTRY_SNAPSHOT, json.encodeToString(snapshot).toByteArray())
+                zipDirIfExists(zip, File(mihomoDir, "imported"), "$ENTRY_FILES_PREFIX/imported")
+                zipDirIfExists(zip, File(mihomoDir, "pending"), "$ENTRY_FILES_PREFIX/pending")
+                val override = File(mihomoDir, OVERRIDE_FILE)
+                if (override.isFile) zip.putFile("$ENTRY_FILES_PREFIX/$OVERRIDE_FILE", override)
             }
         }
     }
 
     /**
+     * 中转文件：WebDAV 收发都需要一个能带长度、可重复读的 body，用完即删。
+     */
+    suspend fun <T> withTransferFile(block: suspend (File) -> T): T {
+        val file = File(context.cacheDir, TRANSFER_FILE)
+        return try {
+            block(file)
+        } finally {
+            withContext(Dispatchers.IO) { file.delete() }
+        }
+    }
+
+    /** 从 SAF 文档恢复。 */
+    suspend fun importFrom(uri: Uri) = withContext(Dispatchers.IO) {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw BackupException("Cannot open $uri for reading")
+        input.use { restoreBackup(it) }
+    }
+
+    /** 从普通文件恢复（WebDAV 下载的中转）。 */
+    suspend fun restoreBackupFrom(file: File) = withContext(Dispatchers.IO) {
+        file.inputStream().use { restoreBackup(it) }
+    }
+
+    /**
      * 恢复：覆盖式。imported/ 与 pending/ 目录整体替换，三表清空重放，prefs 逐 key 写入
      * （本机多出的 key 保留）。调用方保证代理已停止；成功返回后必须重启进程。
+     *
+     * 归档同样是流式读：条目边读边落进 staging，不在内存里聚一份全量解压结果。
      */
-    suspend fun restoreBackup(bytes: ByteArray) = ProfileProcessor.withProcessLock {
+    private suspend fun restoreBackup(input: InputStream) = ProfileProcessor.withProcessLock {
         withContext(Dispatchers.IO) {
-            val entries = readZip(bytes)
-            val snapshotBytes = entries[ENTRY_SNAPSHOT]
-                ?: throw BackupException("backup.json not found in archive")
-            val snapshot = runCatching { json.decodeFromString<BackupSnapshot>(snapshotBytes.decodeToString()) }
-                .getOrElse { throw BackupException("Invalid backup.json: ${it.message}") }
-            if (snapshot.version > BACKUP_VERSION) {
-                throw BackupException("Backup version ${snapshot.version} is newer than supported $BACKUP_VERSION")
-            }
+            // 校验（含版本过新）排在解包之后：staging 是临时目录，正式目录直到 swapIn 才被触碰，
+            // 失败路径只是把 staging 删掉
+            val snapshot = extractToStaging(input)
 
             // 文件与 DB 一起换：processLock 挡不住只持 profileLock 的 create/patch/delete
             repository.withProfileLock {
-                stageAndSwapFiles(entries)
+                swapStagedFiles()
                 replaceDatabase(snapshot)
             }
 
@@ -196,6 +232,12 @@ class BackupManager(
         closeEntry()
     }
 
+    private fun ZipOutputStream.putFile(name: String, file: File) {
+        putNextEntry(ZipEntry(name))
+        file.inputStream().use { it.copyTo(this) }
+        closeEntry()
+    }
+
     /** 内容先全写进 staging（此时正式目录一动未动），再 rename 换入；失败从 old/ 回滚。 */
     /**
      * 三表清空重放。**必须整体一个事务**：逐条 insert 各自一个隐式事务，中途抛（备份里
@@ -215,23 +257,55 @@ class BackupManager(
         }
     }
 
-    private fun stageAndSwapFiles(entries: Map<String, ByteArray>) {
+    /**
+     * 单遍读归档：文件条目落进 staging，backup.json 留在内存（KB 级）并在读完后校验。
+     * 任何一步失败都只留下一个待删的 staging，正式目录未被触碰。
+     */
+    private fun extractToStaging(input: InputStream): BackupSnapshot {
+        val staging = File(mihomoDir, RESTORE_STAGING)
+        staging.deleteRecursively()
+        val stagingRoot = staging.also { it.mkdirs() }.canonicalPath + File.separator
+        try {
+            var snapshotBytes: ByteArray? = null
+            ZipInputStream(input.buffered()).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name
+                    when {
+                        entry.isDirectory -> Unit
+                        name == ENTRY_SNAPSHOT -> snapshotBytes = zis.readBytes()
+                        name.startsWith("$ENTRY_FILES_PREFIX/") -> {
+                            val target = File(staging, name.removePrefix("$ENTRY_FILES_PREFIX/"))
+                            // zip-slip 防御：规范化后必须仍在 staging 内
+                            if (!target.canonicalPath.startsWith(stagingRoot)) {
+                                throw BackupException("Illegal entry path: $name")
+                            }
+                            target.parentFile?.mkdirs()
+                            target.outputStream().use { zis.copyTo(it) }
+                        }
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+            val bytes = snapshotBytes ?: throw BackupException("backup.json not found in archive")
+            val snapshot = runCatching { json.decodeFromString<BackupSnapshot>(bytes.decodeToString()) }
+                .getOrElse { throw BackupException("Invalid backup.json: ${it.message}") }
+            if (snapshot.version > BACKUP_VERSION) {
+                throw BackupException("Backup version ${snapshot.version} is newer than supported $BACKUP_VERSION")
+            }
+            return snapshot
+        } catch (e: Throwable) {
+            staging.deleteRecursively()
+            throw e
+        }
+    }
+
+    /** 把 staging 里的内容 rename 换入正式目录；失败从 old/ 回滚。 */
+    private fun swapStagedFiles() {
         val staging = File(mihomoDir, RESTORE_STAGING)
         val old = File(mihomoDir, RESTORE_OLD)
-        staging.deleteRecursively()
         old.deleteRecursively()
         try {
-            staging.mkdirs()
-            for ((name, data) in entries) {
-                if (!name.startsWith("$ENTRY_FILES_PREFIX/")) continue
-                val target = File(staging, name.removePrefix("$ENTRY_FILES_PREFIX/"))
-                // zip-slip 防御：规范化后必须仍在 staging 内
-                if (!target.canonicalPath.startsWith(staging.canonicalPath + File.separator)) {
-                    throw BackupException("Illegal entry path: $name")
-                }
-                target.parentFile?.mkdirs()
-                target.writeBytes(data)
-            }
             old.mkdirs()
             RESTORE_TARGETS.forEach { swapIn(it, staging, old) }
         } catch (e: Throwable) {
@@ -274,22 +348,8 @@ class BackupManager(
                 if (java.nio.file.Files.isSymbolicLink(file.toPath())) return@forEach
                 if (file.name in ProfileFileOps.GEODATA_FILES) return@forEach
                 val relative = file.relativeTo(dir).invariantSeparatorsPath
-                zip.putEntry("$entryPrefix/$relative", file.readBytes())
+                zip.putFile("$entryPrefix/$relative", file)
             }
-    }
-
-    private fun readZip(bytes: ByteArray): Map<String, ByteArray> {
-        val result = LinkedHashMap<String, ByteArray>()
-        ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory) {
-                    result[entry.name] = zis.readBytes()
-                }
-                entry = zis.nextEntry
-            }
-        }
-        return result
     }
 
     companion object {
@@ -302,6 +362,9 @@ class BackupManager(
         // 与正式目录同分区，rename 才原子
         private const val RESTORE_STAGING = ".restore"
         private const val RESTORE_OLD = ".restore-old"
+
+        // WebDAV 收发的中转文件，固定名覆盖式（备份本身就是固定名覆盖式）
+        private const val TRANSFER_FILE = "mishka-backup-transfer.zip"
         private val RESTORE_TARGETS = listOf("imported", "pending", OVERRIDE_FILE)
 
         /**

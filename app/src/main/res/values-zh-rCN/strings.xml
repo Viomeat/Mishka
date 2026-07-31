@@ -527,7 +527,6 @@
     <string name="backup_export_local">备份到文件</string>
     <string name="backup_restore_local">从文件恢复</string>
     <string name="backup_export_done">备份文件已保存</string>
-    <string name="backup_local_save_failed">写入备份文件失败</string>
     <string name="backup_section_webdav">WebDAV</string>
     <string name="backup_local_row_summary">备份到文件或从文件恢复</string>
     <string name="backup_webdav_row_summary">备份到 WebDAV 服务器或从中恢复</string>

@@ -529,7 +529,6 @@
     <string name="backup_export_local">Back up to file</string>
     <string name="backup_restore_local">Restore from file</string>
     <string name="backup_export_done">Backup file saved</string>
-    <string name="backup_local_save_failed">Failed to write backup file</string>
     <string name="backup_section_webdav">WebDAV</string>
     <string name="backup_local_row_summary">Back up to or restore from a file</string>
     <string name="backup_webdav_row_summary">Back up to or restore from a WebDAV server</string>
