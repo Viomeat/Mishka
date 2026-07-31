@@ -38,6 +38,8 @@ class ProfileWorker : Service() {
     // 与 UI 侧共享同一 store：内存值是权威值，自建实例读不到刚落的设置
     private val overrideStore: OverrideJsonStore by inject()
 
+    private val updateScheduler: ProfileUpdateScheduler by inject()
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -67,7 +69,7 @@ class ProfileWorker : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_SCHEDULE_UPDATES -> {
-                scope.launch { ProfileReceiver.rescheduleAll(this@ProfileWorker) }
+                jobs.offer(scope.launch { updateScheduler.reconcileNow() })
             }
 
             ACTION_UPDATE_PROFILE -> {
@@ -117,10 +119,8 @@ class ProfileWorker : Service() {
 
             NotificationHelper.notifyProfileUpdateSuccess(this, imported.name)
             Log.i(TAG, "Profile ${imported.name} updated successfully")
-
-            importedDao.queryByUUID(uuid)?.let { updated ->
-                ProfileReceiver.scheduleNext(this, updated)
-            }
+            // 下次闹钟不在这里布置：update 写回 imported 表会让 ProfileUpdateScheduler 的
+            // Flow 重新对账，按刚刷新的 config.yaml mtime 续期
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update profile ${imported.name}", e)
             NotificationHelper.notifyProfileUpdateFailed(

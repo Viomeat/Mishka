@@ -20,6 +20,7 @@ import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.platform.initToastPlatform
 import top.yukonga.mishka.service.NotificationHelper
 import top.yukonga.mishka.service.ProfileFileOps
+import top.yukonga.mishka.service.ProfileUpdateScheduler
 import top.yukonga.mishka.service.RootHelper
 import java.io.File
 import java.io.FileOutputStream
@@ -31,6 +32,9 @@ class MishkaApplication : Application() {
     // 消费方（ViewModel / Service）禁止自建 MihomoApiClient/WebSocket，只 collect connectionManager.repository
     // 由 Koin dataModule 提供（内部用 dataModule 的 application 级 CoroutineScope）
     val connectionManager: MihomoConnectionManager by inject()
+
+    // 自动更新闹钟随 imported 表对账，进程一起就接上（后台服务拉起的进程同样需要）
+    private val updateScheduler: ProfileUpdateScheduler by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -48,6 +52,7 @@ class MishkaApplication : Application() {
             userAgent = "ClashMetaForAndroid/${BuildConfig.VERSION_NAME}",
         )
         reclaimRootOwnedImported()
+        updateScheduler.start()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val prefs = getSharedPreferences("mishka_prefs", MODE_PRIVATE)

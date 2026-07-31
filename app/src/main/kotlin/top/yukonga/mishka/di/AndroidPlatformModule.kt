@@ -10,6 +10,7 @@ import top.yukonga.mishka.platform.BootStartManager
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.platform.WifiPolicyController
+import top.yukonga.mishka.service.ProfileUpdateScheduler
 
 /**
  * Android 平台单例：均绑定 application Context（`androidContext()`）。
@@ -23,4 +24,5 @@ val androidPlatformModule: Module = module {
     single { WifiPolicyController(androidContext()) }
     single { BootStartManager(androidContext()) }
     single { BackupManager(androidContext(), get(), get(), get(), get()) }
+    single { ProfileUpdateScheduler(androidContext(), get(), get()) }
 }
