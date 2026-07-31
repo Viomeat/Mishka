@@ -201,6 +201,7 @@
     <string name="subscription_url_hint">仅接受 mihomo 配置文件(包含代理/规则)</string>
     <string name="subscription_name">名称</string>
     <string name="subscription_name_auto_placeholder">留空时自动从订阅获取</string>
+    <string name="subscription_default_name">订阅</string>
     <string name="subscription_url_label">URL</string>
     <string name="subscription_url_placeholder">仅接受 http(s) 和 content 类型</string>
     <string name="subscription_user_agent">User-Agent</string>
@@ -409,6 +410,7 @@
     <string name="network_dns_listen">监听地址</string>
     <string name="network_dns_listen_title">DNS 监听地址</string>
     <string name="network_dns_use_hosts">使用 Hosts</string>
+    <string name="network_dns_prefer_h3">优先 H3</string>
     <string name="network_dns_enhanced_mode">增强模式</string>
     <string name="network_dns_default_nameserver">默认 Nameserver</string>
     <string name="network_dns_fakeip_filter">FakeIP 过滤</string>

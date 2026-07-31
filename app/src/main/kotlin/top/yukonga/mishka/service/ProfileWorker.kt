@@ -120,7 +120,12 @@ class ProfileWorker : Service() {
             scope = scope,
         )
         val proxyResolver = SubscriptionProxyResolver(storage, overrideStore)
-        val processor = ProfileProcessor(repo, fileManager, proxyResolver)
+        val processor = ProfileProcessor(
+            repo = repo,
+            fileManager = fileManager,
+            defaultProfileName = getString(R.string.subscription_default_name),
+            proxyResolver = proxyResolver,
+        )
 
         try {
             notificationManager.notify(

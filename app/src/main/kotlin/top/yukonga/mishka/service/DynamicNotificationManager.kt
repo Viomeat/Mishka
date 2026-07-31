@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import top.yukonga.mishka.R
 import top.yukonga.mishka.data.api.MihomoConnectionManager
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.StorageKeys
@@ -66,11 +67,14 @@ class DynamicNotificationManager(
             val profileName = storage.getString(StorageKeys.ACTIVE_PROFILE_NAME, "Mishka")
             start(profileName)
         } else {
-            val mode = when (tunMode) {
-                TunMode.RootTun -> "Root TUN"
-                TunMode.RootTproxy -> "Root TPROXY"
-                TunMode.Vpn -> "VpnService"
-            }
+            // 与设置页的隧道模式名同源，避免通知里出现「Root TUN」而设置里写「ROOT TUN」
+            val mode = context.getString(
+                when (tunMode) {
+                    TunMode.RootTun -> R.string.settings_tun_mode_root_tun
+                    TunMode.RootTproxy -> R.string.settings_tun_mode_root_tproxy
+                    TunMode.Vpn -> R.string.settings_tun_mode_vpn
+                }
+            )
             val notification = NotificationHelper.buildRunningNotification(context, mode)
             context.getSystemService(NotificationManager::class.java)
                 ?.notify(NotificationHelper.NOTIFICATION_ID_VPN, notification)

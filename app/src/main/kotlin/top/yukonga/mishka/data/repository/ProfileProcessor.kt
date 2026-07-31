@@ -39,6 +39,8 @@ class ConfigValidationException(message: String) : Exception(message)
 class ProfileProcessor(
     private val repo: SubscriptionRepositoryImpl,
     private val fileManager: ProfileFileManager,
+    /** 自动命名兜底链的最后一环，由调用方按 locale 取值——data 层拿不到资源 */
+    private val defaultProfileName: String,
     private val proxyResolver: SubscriptionProxyResolver,
 ) {
 
@@ -162,14 +164,15 @@ class ProfileProcessor(
     }
 
     /**
-     * 名字留空时的兜底链：Content-Disposition > URL host > 固定串。是否采用由 commitPending
-     * 按 commit 时刻的 pending.name 判空决定——fetch 期间锁已释放，用户可能已另填名字，用户输入永远优先。
+     * 名字留空时的兜底链：Content-Disposition > URL host > [defaultProfileName]。是否采用由
+     * commitPending 按 commit 时刻的 pending.name 判空决定——fetch 期间锁已释放，用户可能已另填名字，
+     * 用户输入永远优先。
      */
     private fun autoProfileName(snapshot: PendingSnapshot, dispositionName: String): String {
         if (snapshot.type != ProfileType.Url) return ""
         return dispositionName
             .ifBlank { runCatching { URI(snapshot.source).host.orEmpty() }.getOrDefault("") }
-            .ifBlank { "Subscription" }
+            .ifBlank { defaultProfileName }
     }
 
     private fun mapProgress(p: CoreFetchProgress): ImportProgress = when (p.action) {

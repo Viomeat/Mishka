@@ -283,7 +283,7 @@ fun NetworkSettingsScreen(
                     },
                     CardItem("preferH3") {
                         TriStatePreference(
-                            title = "Prefer H3",
+                            title = stringResource(R.string.network_dns_prefer_h3),
                             value = dns?.preferH3,
                             onValueChange = { v -> updateDns { it.copy(preferH3 = v) } },
                             enabled = dnsSubEnabled,

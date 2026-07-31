@@ -203,6 +203,7 @@
     <string name="subscription_url_hint">Only accepts mihomo config files (with proxies/rules)</string>
     <string name="subscription_name">Name</string>
     <string name="subscription_name_auto_placeholder">Leave blank to auto-name from subscription</string>
+    <string name="subscription_default_name">Subscription</string>
     <string name="subscription_url_label">URL</string>
     <string name="subscription_url_placeholder">Only accepts http(s) and content types</string>
     <string name="subscription_user_agent">User-Agent</string>
@@ -411,6 +412,7 @@
     <string name="network_dns_listen">Listen Address</string>
     <string name="network_dns_listen_title">DNS Listen Address</string>
     <string name="network_dns_use_hosts">Use Hosts</string>
+    <string name="network_dns_prefer_h3">Prefer H3</string>
     <string name="network_dns_enhanced_mode">Enhanced Mode</string>
     <string name="network_dns_default_nameserver">Default Nameserver</string>
     <string name="network_dns_fakeip_filter">FakeIP Filter</string>

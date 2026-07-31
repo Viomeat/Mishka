@@ -5,7 +5,9 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
+import top.yukonga.mishka.R
 import top.yukonga.mishka.data.api.MihomoConnectionManager
 import top.yukonga.mishka.data.api.RuleLatencyTester
 import top.yukonga.mishka.data.database.AppDatabase
@@ -42,5 +44,12 @@ val dataModule = module {
     single { SubscriptionRepositoryImpl(get(), get(), get(), get(), getOrNull(), get()) }
     single<SubscriptionRepository> { get<SubscriptionRepositoryImpl>() }
 
-    factory { ProfileProcessor(get(), get(), get()) }
+    factory {
+        ProfileProcessor(
+            repo = get(),
+            fileManager = get(),
+            defaultProfileName = androidContext().getString(R.string.subscription_default_name),
+            proxyResolver = get(),
+        )
+    }
 }

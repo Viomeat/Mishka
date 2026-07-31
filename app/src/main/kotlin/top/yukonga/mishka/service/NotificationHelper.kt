@@ -117,7 +117,11 @@ object NotificationHelper {
     }
 
     fun buildLoadingNotification(context: Context): Notification {
-        return buildNotification(context, "Mishka", context.getString(R.string.notification_loading))
+        return buildNotification(
+            context,
+            context.getString(R.string.app_name),
+            context.getString(R.string.notification_loading),
+        )
     }
 
     fun buildRunningNotification(context: Context, mode: String = "VpnService"): Notification {
