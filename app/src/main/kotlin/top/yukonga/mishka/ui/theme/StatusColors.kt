@@ -99,12 +99,10 @@ object StatusColors {
         }
     }
 
-    /** 流量折线：上传 */
     val trafficUpload: Color
         @Composable @ReadOnlyComposable
         get() = if (LocalAppDarkMode.current) Green300Dark else Green600Light
 
-    /** 流量折线：下载 */
     val trafficDownload: Color
         @Composable @ReadOnlyComposable
         get() = if (LocalAppDarkMode.current) Blue300Dark else Blue600Light

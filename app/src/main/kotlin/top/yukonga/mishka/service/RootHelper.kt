@@ -125,7 +125,6 @@ object RootHelper {
     fun killAsRoot(pid: Int, tunDevice: String = "Mishka"): Boolean {
         try {
             Log.i(TAG, "Killing root process: pid=$pid")
-            // SIGTERM
             runRootCommand("kill $pid")
             for (i in 1..6) {
                 Thread.sleep(500)

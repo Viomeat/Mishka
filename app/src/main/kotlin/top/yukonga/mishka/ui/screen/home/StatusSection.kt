@@ -203,7 +203,6 @@ private fun StatusContent(
         }
     }
 
-    // 模式切换 Dialog
     ModeSelectDialog(
         show = showModeDialog,
         currentMode = state.mode,
@@ -214,7 +213,6 @@ private fun StatusContent(
         onDismiss = { showModeDialog = false },
     )
 
-    // TUN Stack 切换 Dialog
     TunStackSelectDialog(
         show = showTunStackDialog,
         currentStack = state.tunStack,

@@ -235,7 +235,6 @@ class ProxyViewModel(
                         .map { if (it.name == group) it.copy(now = proxy) else it }
                         .toPersistentList()
                 )
-                // 保存选择到数据库
                 saveSelection(group, proxy)
             }
         }
@@ -306,7 +305,6 @@ class ProxyViewModel(
         val updatedGroups = groups.toMutableList()
 
         for ((index, group) in groups.withIndex()) {
-            // 只恢复 Selector 类型的组
             if (group.type != "Selector") continue
             val saved = selectionMap[group.name] ?: continue
             if (saved == group.now) continue

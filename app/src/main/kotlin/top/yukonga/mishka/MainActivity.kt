@@ -223,7 +223,6 @@ class MainActivity : ComponentActivity() {
             hasRootState.value = hasRoot
         }
 
-        // 隐藏后台卡片：通过 excludeFromRecents 从最近任务中移除
         if (storage.getString(StorageKeys.HIDE_TASK_CARD, "false") == "true") {
             setExcludeFromRecents(true)
         }

@@ -129,7 +129,6 @@ class MishkaTunService : VpnService() {
             }
             ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Starting, tunMode = TunMode.Vpn))
 
-            // 清理当前实例 runner 的残留
             if (runner.isRunning) {
                 runner.stop()
             }
@@ -162,7 +161,6 @@ class MishkaTunService : VpnService() {
                     setSession("Mishka")
                     setBlocking(false)
 
-                    // VPN 设置：绕过私有网络
                     val bypassPrivate = storage.getString(StorageKeys.VPN_BYPASS_PRIVATE_NETWORK, "true") == "true"
                     if (bypassPrivate) {
                         resources.getStringArray(R.array.bypass_private_route).forEach { cidr ->
@@ -174,7 +172,6 @@ class MishkaTunService : VpnService() {
                         addRoute("0.0.0.0", 0)
                     }
 
-                    // VPN 设置：允许 IPv6
                     val allowIpv6 = storage.getString(StorageKeys.VPN_ALLOW_IPV6, "false") == "true"
                     if (allowIpv6) {
                         addAddress(TUN_GATEWAY6, TUN_SUBNET_PREFIX6)
@@ -189,20 +186,17 @@ class MishkaTunService : VpnService() {
                         }
                     }
 
-                    // VPN 设置：DNS 劫持
                     val dnsHijacking = storage.getString(StorageKeys.VPN_DNS_HIJACKING, "true") == "true"
                     if (dnsHijacking) {
                         addDnsServer(TUN_DNS)
                         if (allowIpv6) addDnsServer(TUN_DNS6)
                     }
 
-                    // VPN 设置：允许应用绕过
                     val allowBypass = storage.getString(StorageKeys.VPN_ALLOW_BYPASS, "true") == "true"
                     if (allowBypass) {
                         allowBypass()
                     }
 
-                    // 应用代理设置
                     val proxyMode = storage.getString(StorageKeys.APP_PROXY_MODE, "AllowAll")
                     val packages = storage.getStringSet(StorageKeys.APP_PROXY_PACKAGES, emptySet())
 

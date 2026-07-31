@@ -101,7 +101,6 @@ fun ConnectionScreen(
         onDispose { viewModel.stopObserving() }
     }
 
-    // 搜索状态
     val searchLabel = stringResource(R.string.connection_search)
     var searchStatus by remember { mutableStateOf(SearchStatus(label = searchLabel)) }
 
@@ -297,7 +296,6 @@ fun ConnectionScreen(
                         }
                     }
                 } else {
-                    // 统计信息
                     item(key = "stats", contentType = "stats") {
                         StatsCard(
                             connectionCount = uiState.connections.size,
@@ -418,7 +416,6 @@ private fun ConnectionItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // 网络类型 Badge (TCP/UDP)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(3.dp))
@@ -458,7 +455,6 @@ private fun ConnectionItem(
             )
         }
 
-        // 代理链
         if (connection.chains.isNotEmpty()) {
             Text(
                 text = connection.chains.joinToString(" → "),
@@ -471,7 +467,6 @@ private fun ConnectionItem(
             )
         }
 
-        // 规则
         val ruleText = buildString {
             append(connection.rule)
             if (connection.rulePayload.isNotEmpty()) {

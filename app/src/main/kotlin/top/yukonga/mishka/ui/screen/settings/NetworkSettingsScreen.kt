@@ -159,7 +159,6 @@ fun NetworkSettingsScreen(
         ) {
             item { RestartRequiredHint() }
 
-            // === 代理端口 ===
             item { SmallTitle(text = stringResource(R.string.network_proxy_ports)) }
             groupedCardItems(
                 keyPrefix = "network_ports",
@@ -212,7 +211,6 @@ fun NetworkSettingsScreen(
                 ),
             )
 
-            // === 网络选项 ===
             item { SmallTitle(text = stringResource(R.string.network_options)) }
             groupedCardItems(
                 keyPrefix = "network_options",
@@ -253,7 +251,6 @@ fun NetworkSettingsScreen(
                 ),
             )
 
-            // === DNS ===
             // DNS 显式关闭时禁用子项；null（不修改）仍保留可编辑，允许用户预配置子覆写
             val dnsSubEnabled = dns?.enable != false
             item { SmallTitle(text = stringResource(R.string.network_dns)) }
@@ -364,7 +361,6 @@ fun NetworkSettingsScreen(
         }
     }
 
-    // === 端口编辑 Dialog ===
     PortEditDialog(
         show = showPortDialog,
         title = editingPortTitle,
@@ -377,7 +373,6 @@ fun NetworkSettingsScreen(
         },
     )
 
-    // === 字符串编辑 Dialog ===
     StringEditDialog(
         show = showStringDialog,
         title = editingStringTitle,
@@ -390,7 +385,6 @@ fun NetworkSettingsScreen(
         },
     )
 
-    // === 列表编辑 Dialog ===
     ListEditDialog(
         show = showListDialog,
         title = editingListTitle,

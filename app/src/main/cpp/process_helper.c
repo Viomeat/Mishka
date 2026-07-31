@@ -82,7 +82,6 @@ Java_top_yukonga_mishka_service_ProcessHelper_nativeForkExec(
             _exit(126);
         }
 
-        // 重定向 stdout/stderr 到日志文件（或合并到 stderr）
         if (logFile) {
             int logFd = open(logFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (logFd >= 0) {

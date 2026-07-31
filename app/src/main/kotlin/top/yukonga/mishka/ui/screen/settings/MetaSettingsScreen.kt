@@ -153,7 +153,6 @@ fun MetaSettingsScreen(
         ) {
             item { RestartRequiredHint() }
 
-            // === 基本 ===
             item { SmallTitle(text = stringResource(R.string.meta_basic)) }
             groupedCardItems(
                 keyPrefix = "meta_basic",
@@ -188,7 +187,6 @@ fun MetaSettingsScreen(
                 ),
             )
 
-            // === 嗅探器 ===
             item { SmallTitle(text = stringResource(R.string.meta_sniffer)) }
             groupedCardItems(
                 keyPrefix = "meta_sniffer",
@@ -250,7 +248,6 @@ fun MetaSettingsScreen(
                 ),
             )
 
-            // === Age 加密 ===
             item { SmallTitle(text = stringResource(R.string.meta_age)) }
             groupedCardItems(
                 keyPrefix = "meta_age",
@@ -282,7 +279,6 @@ fun MetaSettingsScreen(
         }
     }
 
-    // === 列表编辑 Dialog ===
     ListEditDialog(
         show = showListDialog,
         title = editingListTitle,
@@ -295,7 +291,6 @@ fun MetaSettingsScreen(
         },
     )
 
-    // === Age 密钥对生成结果 Dialog ===
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
     val copiedMsg = stringResource(R.string.common_copied)

@@ -177,7 +177,6 @@ class SubscriptionRepositoryImpl(
         val trimmedAge = ageSecretKey.trim()
         val existing = pendingDao.queryByUUID(uuid)
         if (existing == null) {
-            // 从 Imported 创建 Pending 副本
             val imported = importedDao.queryByUUID(uuid)
                 ?: throw IllegalArgumentException("Profile $uuid not found")
             pendingDao.insert(
@@ -193,7 +192,6 @@ class SubscriptionRepositoryImpl(
                 )
             )
         } else {
-            // 更新已有 Pending
             pendingDao.update(
                 existing.copy(
                     name = name,

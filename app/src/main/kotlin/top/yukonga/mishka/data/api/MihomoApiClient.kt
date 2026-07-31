@@ -60,12 +60,8 @@ class MihomoApiClient(
         }
     }
 
-    // === 版本 ===
-
     suspend fun getVersion(): MihomoVersion =
         client.get("$baseUrl/version").body()
-
-    // === 配置 ===
 
     suspend fun getConfig(): MihomoConfig =
         client.get("$baseUrl/configs").body()
@@ -129,8 +125,6 @@ class MihomoApiClient(
                 parameters.append("timeout", timeout.toString())
             }
         }.body()
-
-    // === 规则 ===
 
     suspend fun getRules(): RulesResponse =
         client.get("$baseUrl/rules").body()

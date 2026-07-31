@@ -130,7 +130,6 @@ fun DnsQueryScreen(
                 Column(
                     modifier = Modifier.padding(all = 12.dp)
                 ) {
-                    // 域名输入框
                     TextField(
                         state = textFieldState,
                         modifier = Modifier.fillMaxWidth(),
@@ -187,7 +186,6 @@ fun DnsQueryScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // 查询按钮
                     TextButton(
                         text = if (uiState.isQuerying) stringResource(R.string.dns_querying) else stringResource(R.string.dns_query),
                         modifier = Modifier.fillMaxWidth(),
@@ -201,7 +199,6 @@ fun DnsQueryScreen(
                 }
             }
 
-            // 错误
             if (uiState.error.isNotEmpty()) {
                 item(key = "error") {
                     Card(
@@ -294,7 +291,6 @@ private fun DnsAnswerItem(answer: DnsAnswer) {
         title = answer.data,
         summary = "TTL: ${answer.TTL}s",
         startAction = {
-            // 类型 Badge
             Box(
                 modifier = Modifier
                     .padding(end = 10.dp)

@@ -54,7 +54,6 @@ class MihomoRunner(private val context: Context) {
             Log.w(TAG, "Attach failed: auth failed (pid=$pid)")
             return false
         }
-        // 全部通过，原子赋值
         childPid = pid
         isRootMode = true
         this.secret = secret
