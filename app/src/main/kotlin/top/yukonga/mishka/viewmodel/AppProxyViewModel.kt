@@ -9,6 +9,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentSet
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.platform.AppInfo
@@ -54,6 +56,8 @@ class AppProxyViewModel(
     /** 排序锚点：进入页面时的初始勾选集合。整个会话保持不变，勾选不触发重排 */
     private val _sortAnchor = MutableStateFlow<Set<String>>(emptySet())
 
+    private var appsLoadJob: Job? = null
+
     /** 列表重算的输入。勾选态刻意不在其中，故 toggle 不重跑过滤排序 */
     private data class ListInput(
         val apps: ImmutableList<AppInfo>,
@@ -76,11 +80,15 @@ class AppProxyViewModel(
                     .thenBy { it.appName.lowercase() }
             )
             .toPersistentList()
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, persistentListOf())
+    }
+        // 第一个订阅者出现时才枚举 PackageManager。VM 是 Koin single，随冷启动构造，
+        // 而多数会话根本不会打开分应用代理页——枚举 + 逐包 loadLabel 是几百毫秒 CPU
+        // 加一份常驻全量列表，白付
+        .onStart { ensureAppsLoaded() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), persistentListOf())
 
     init {
         loadSavedState()
-        loadApps()
     }
 
     private fun loadSavedState() {
@@ -100,8 +108,10 @@ class AppProxyViewModel(
         _uiState.value = _uiState.value.copy(mode = mode, selectedPackages = packages)
     }
 
-    private fun loadApps() {
-        viewModelScope.launch {
+    /** 每进程只枚举一次；页面重新订阅（离开超过 stop timeout 后回来）不重复拉取。 */
+    private fun ensureAppsLoaded() {
+        if (appsLoadJob != null) return
+        appsLoadJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val apps = appListProvider.getInstalledApps()
             _uiState.value = _uiState.value.copy(apps = apps, isLoading = false)
@@ -186,6 +196,11 @@ class AppProxyViewModel(
         initialMode = state.mode
         initialPackages = state.selectedPackages
         return true
+    }
+
+    private companion object {
+        /** 离开页面到停止共享的宽限期，覆盖旋转屏 / 短暂切走导致的重订阅 */
+        const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
     }
 }
 
