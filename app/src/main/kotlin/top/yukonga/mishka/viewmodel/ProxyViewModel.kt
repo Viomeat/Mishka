@@ -73,6 +73,9 @@ class ProxyViewModel(
     // 晚于新 client 的写入，把刚切走的旧订阅代理组覆盖回来
     private var loadJob: Job? = null
 
+    /** 已对哪条连接恢复过保存的组选择，保证每条连接只推一次 */
+    private var selectionsRestoredFor: MihomoRepository? = null
+
     // provider 节点名 → provider 名。/proxies 命名空间只含 runtime 节点，
     // provider 节点的延迟测试必须路由到 /providers/proxies/{provider}/{node}/healthcheck
     private var nodeProviderMap: Map<String, String> = emptyMap()
@@ -102,9 +105,15 @@ class ProxyViewModel(
         storage?.getString(StorageKeys.PROXY_SHOW_GLOBAL_GROUP, "true") != "false"
 
     fun setRepository(repo: MihomoRepository?) {
+        if (repository === repo) return
         loadJob?.cancel()
         repository = repo
         if (repo != null) {
+            // 旧连接上的测速已无意义，标记留着就是永久转圈的 spinner
+            _uiState.value = _uiState.value.copy(
+                testingGroups = persistentSetOf(),
+                testingNodes = persistentSetOf(),
+            )
             loadProxies()
         } else {
             nodeProviderMap = emptyMap()
@@ -200,8 +209,12 @@ class ProxyViewModel(
                     .toPersistentList()
                 _uiState.value = _uiState.value.copy(groups = groups, mode = mode)
 
-                // 恢复已保存的代理组选择
-                restoreSelections(repo, groups)
+                // 「恢复已保存选择」是每条连接做一次的事。挂在每次 loadProxies 上会让切代理
+                // Tab、每次测速都把用户在其它客户端做的选择强推回去，还多出 N 次 PUT
+                if (selectionsRestoredFor !== repo) {
+                    selectionsRestoredFor = repo
+                    restoreSelections(repo, groups)
+                }
             }.onFailure {
                 _uiState.value = _uiState.value.copy(error = "加载失败: ${it.message}")
             }
@@ -232,13 +245,17 @@ class ProxyViewModel(
         )
 
         viewModelScope.launch {
-            // mihomo /group/{name}/delay 测全部节点延迟，结果会自然写入 history.delay
-            repo.testGroupDelay(group)
-            if (repository !== repo) return@launch
-            loadProxies()
-            _uiState.value = _uiState.value.copy(
-                testingGroups = (_uiState.value.testingGroups - group).toPersistentSet(),
-            )
+            try {
+                // mihomo /group/{name}/delay 测全部节点延迟，结果会自然写入 history.delay
+                repo.testGroupDelay(group)
+                if (repository !== repo) return@launch
+                loadProxies()
+            } finally {
+                // 正常结束、repo 切换、被取消都要摘标记，漏掉哪条路径该组就永久转圈
+                _uiState.value = _uiState.value.copy(
+                    testingGroups = (_uiState.value.testingGroups - group).toPersistentSet(),
+                )
+            }
         }
     }
 
@@ -250,24 +267,22 @@ class ProxyViewModel(
         )
 
         viewModelScope.launch {
-            // 延迟结果写入节点全局 history.delay，loadProxies 再从 history 读回并分发到
-            // 所有引用该节点的组，保证跨组延迟一致；provider 节点走 provider healthcheck 端点
-            val provider = nodeProviderMap[nodeName]
-            if (provider != null) {
-                repo.getProviderProxyDelay(provider, nodeName)
-            } else {
-                repo.getProxyDelay(nodeName)
-            }
-            if (repository !== repo) {
+            try {
+                // 延迟结果写入节点全局 history.delay，loadProxies 再从 history 读回并分发到
+                // 所有引用该节点的组，保证跨组延迟一致；provider 节点走 provider healthcheck 端点
+                val provider = nodeProviderMap[nodeName]
+                if (provider != null) {
+                    repo.getProviderProxyDelay(provider, nodeName)
+                } else {
+                    repo.getProxyDelay(nodeName)
+                }
+                if (repository !== repo) return@launch
+                loadProxies()
+            } finally {
                 _uiState.value = _uiState.value.copy(
                     testingNodes = (_uiState.value.testingNodes - nodeName).toPersistentSet(),
                 )
-                return@launch
             }
-            loadProxies()
-            _uiState.value = _uiState.value.copy(
-                testingNodes = (_uiState.value.testingNodes - nodeName).toPersistentSet(),
-            )
         }
     }
 
@@ -298,6 +313,9 @@ class ProxyViewModel(
             }
         }
 
+        // 期间跑过 Room 查询与若干 selectProxy，repo 可能已被换掉；loadJob.cancel 之外
+        // 再校一次身份，否则旧连接的恢复结果会覆盖新订阅的组
+        if (repository !== repo) return
         _uiState.value = _uiState.value.copy(groups = updatedGroups.toPersistentList())
     }
 
