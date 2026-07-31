@@ -93,18 +93,18 @@ class BackupManager(
 
     suspend fun createBackup(): ByteArray = ProfileProcessor.withProcessLock {
         withContext(Dispatchers.IO) {
+            // 一次快照分两类装：dumpAll 每次加锁复制整张表，两次调用之间还可能被写入撕开
+            val prefs = storage.dumpAll().filterKeys { it !in EXCLUDED_PREF_KEYS }
             val snapshot = BackupSnapshot(
                 version = BACKUP_VERSION,
                 createdAt = System.currentTimeMillis(),
                 imported = importedDao.queryAll().map { it.toBackup() },
                 pending = pendingDao.queryAll().map { it.toBackup() },
                 selections = selectionDao.queryAll().map { BackupSelection(it.uuid, it.proxy, it.selected) },
-                stringPrefs = storage.dumpAll()
-                    .filterKeys { it !in EXCLUDED_PREF_KEYS }
+                stringPrefs = prefs
                     .mapNotNull { (k, v) -> (v as? String)?.let { k to it } }
                     .toMap(),
-                stringSetPrefs = storage.dumpAll()
-                    .filterKeys { it !in EXCLUDED_PREF_KEYS }
+                stringSetPrefs = prefs
                     .mapNotNull { (k, v) ->
                         @Suppress("UNCHECKED_CAST")
                         (v as? Set<String>)?.let { k to it.toList() }
