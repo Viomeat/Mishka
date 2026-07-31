@@ -191,9 +191,17 @@ class MihomoRunner(private val context: Context) {
      * 其他 inbound 仍响应 /version，只有日志能区分 silent failure。
      */
     private suspend fun waitForReady(useRoot: Boolean, workDir: File): String? {
-        repeat(20) {
+        repeat(20) { round ->
             delay(500)
-            // 进程退出则快速失败
+            // API 响应则就绪 —— 但还需要确认 TUN inbound 也成功
+            if (isApiReady()) {
+                // 额外等待让 mihomo 完成 TUN init 并输出日志
+                delay(500)
+                return scanLogForTunError(useRoot, workDir)
+            }
+            // 进程退出则快速失败。ROOT 下 /proc 是 hidepid，判活要 fork 一次 su，
+            // 故降到 2s 一次——总预算 10s，晚 1.5s 发现死亡不影响诊断
+            if (round % LIVENESS_CHECK_EVERY != 0) return@repeat
             val alive = if (useRoot) RootHelper.isAliveAsRoot(childPid) else isProcessAlive(childPid)
             if (!alive) {
                 val logContent = readStartupLog(useRoot, workDir)
@@ -203,12 +211,6 @@ class MihomoRunner(private val context: Context) {
                 } else {
                     context.getString(R.string.error_mihomo_exited)
                 }
-            }
-            // API 响应则就绪 —— 但还需要确认 TUN inbound 也成功
-            if (isApiReady()) {
-                // 额外等待让 mihomo 完成 TUN init 并输出日志
-                delay(500)
-                return scanLogForTunError(useRoot, workDir)
             }
         }
         // 超时：尝试读取日志辅助诊断
@@ -321,5 +323,8 @@ class MihomoRunner(private val context: Context) {
 
     companion object {
         private const val TAG = "MihomoRunner"
+
+        /** waitForReady 每几轮（每轮 500ms）做一次判活 */
+        private const val LIVENESS_CHECK_EVERY = 4
     }
 }

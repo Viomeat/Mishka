@@ -78,6 +78,12 @@ object RootTetherHijacker {
 
     // `-w <秒>`：让 iptables 自己排队等 xtables.lock；重试覆盖等待超时后锁仍被占的极端情况
     internal const val IPT_WAIT_SECONDS = 5
+
+    /** 同一 priority 可能挂多条 rule，删到失败为止；上限纯防呆 */
+    private const val MAX_RULES_PER_PRIORITY = 32
+
+    /** 单次 su 跑多条命令时的分段标记 */
+    private const val SECTION_MARK = "--- "
     private const val IPT_LOCK_RETRIES = 3
     private const val IPT_LOCK_RETRY_DELAY_MS = 300L
 
@@ -175,8 +181,8 @@ object RootTetherHijacker {
      * 带 fwmark 的包找不到接收 socket，直接被丢。
      */
     private fun applyTproxy(interfaces: List<String>) {
-        // 幂等：清理残留（旧版升级路径 / 上次异常退出）
-        teardownTproxy()
+        // 幂等：清理残留（上次异常退出 / 第三方模块留下的同名 chain）
+        runTeardownPass()
 
         // 整体 apply 走 heredoc 单次 su 调用：CIDR RETURN 规则 ~60 条，per-cmd 模式
         // 每条 ~50-100ms 会让 apply 慢 3-6s；heredoc 单次 fork 全部完成。
@@ -377,92 +383,95 @@ object RootTetherHijacker {
         }
     }
 
+    /**
+     * 一次 su 跑完整轮清理。逐条 fork 要 ~24 次，Magisk 下每次 30~100ms，
+     * 全压在 stop / restart 的关键路径上。
+     */
     private fun runTeardownPass() {
-        teardownIpRulesByPriority()
-        teardownTproxy()
+        RootHelper.runRootScriptHeredoc(buildTeardownScript())
+    }
+
+    /**
+     * ip rule 需按 priority 反复删到失败为止（同一 priority 可能有多条），iptables 的
+     * PREROUTING jump 必须与 apply 时的 `-A` 逐参数精确匹配——两者都在 shell 里就地完成，
+     * 不必把中间结果拉回 Kotlin 再发第二轮命令。
+     */
+    private fun buildTeardownScript(): String = buildString {
+        appendLine("#!/system/bin/sh")
+        for ((v6, priority) in listOf(
+            false to PRIORITY_V4,
+            true to PRIORITY_V6,
+            false to PRIORITY_RETURN_V4,
+            true to PRIORITY_RETURN_V6,
+            false to PRIORITY_FWMARK,
+            true to PRIORITY_FWMARK,
+        )) {
+            val ip = if (v6) "ip -6" else "ip"
+            appendLine("i=0; while [ \$i -lt $MAX_RULES_PER_PRIORITY ] && $ip rule del priority $priority 2>/dev/null; do i=\$((i+1)); done")
+        }
+        for (bin in IPT_BINS) {
+            // 先拆 PREROUTING jump，再 flush CHAIN_NAME（其内部 -j DIVERT 一并清除），
+            // 然后才能 -X DIVERT——被引用的 chain 不能直接删
+            appendLine(
+                "$bin -t mangle -S PREROUTING 2>/dev/null | grep -- '-j $CHAIN_NAME' | " +
+                    "sed 's/^-A/-D/' | while read -r r; do $bin -t mangle \$r 2>/dev/null; done"
+            )
+            for (chain in listOf(CHAIN_NAME, CHAIN_DIVERT_NAME)) {
+                appendLine("$bin -t mangle -F $chain 2>/dev/null")
+                appendLine("$bin -t mangle -X $chain 2>/dev/null")
+            }
+        }
+        appendLine("ip route flush table $FWMARK_TABLE 2>/dev/null")
+        appendLine("ip -6 route flush table $FWMARK_TABLE 2>/dev/null")
+        appendLine("exit 0")
     }
 
     private data class TeardownReport(val residual: List<String>)
 
     /** 扫关键锚点：5 个 ip rule priority + 2 个 iptables chain + 专用 route table */
     private fun verifyClean(): TeardownReport {
+        val probes = listOf(
+            "rule4" to "ip rule show",
+            "rule6" to "ip -6 rule show",
+            "mangle4" to "$IPT4 -t mangle -S",
+            "mangle6" to "$IPT6 -t mangle -S",
+            "table4" to "ip route show table $FWMARK_TABLE",
+            "table6" to "ip -6 route show table $FWMARK_TABLE",
+        )
+        val sections = runSections(probes)
+
         val residual = mutableListOf<String>()
-        val v4Rules = runWithOutput("ip rule show").output
-        val v6Rules = runWithOutput("ip -6 rule show").output
         for (pri in listOf(PRIORITY_V4, PRIORITY_V6, PRIORITY_RETURN_V4, PRIORITY_RETURN_V6, PRIORITY_FWMARK)) {
             // `ip rule show` 行格式 "<pri>:\tfrom all ..."，前缀 `<pri>:` 精确匹配
-            if (v4Rules.lineSequence().any { it.startsWith("$pri:") }) residual += "v4 ip rule priority $pri"
-            if (v6Rules.lineSequence().any { it.startsWith("$pri:") }) residual += "v6 ip rule priority $pri"
+            if (sections.hasRulePriority("rule4", pri)) residual += "v4 ip rule priority $pri"
+            if (sections.hasRulePriority("rule6", pri)) residual += "v6 ip rule priority $pri"
         }
-        for (bin in IPT_BINS) {
-            val mangle = runWithOutput("$bin -t mangle -S").output
+        for ((key, bin) in listOf("mangle4" to "iptables", "mangle6" to "ip6tables")) {
+            val mangle = sections[key].orEmpty()
             if (mangle.contains(CHAIN_NAME)) residual += "$bin mangle chain $CHAIN_NAME present"
             if (mangle.contains(CHAIN_DIVERT_NAME)) residual += "$bin mangle chain $CHAIN_DIVERT_NAME present"
         }
-        val t4 = runWithOutput("ip route show table $FWMARK_TABLE").output
-        val t6 = runWithOutput("ip -6 route show table $FWMARK_TABLE").output
-        if (t4.isNotBlank()) residual += "v4 route table $FWMARK_TABLE non-empty"
-        if (t6.isNotBlank()) residual += "v6 route table $FWMARK_TABLE non-empty"
+        if (sections["table4"]?.isNotBlank() == true) residual += "v4 route table $FWMARK_TABLE non-empty"
+        if (sections["table6"]?.isNotBlank() == true) residual += "v6 route table $FWMARK_TABLE non-empty"
         return TeardownReport(residual)
     }
 
-    /** 清理 BYPASS 和 PROXY-fallback 共用的 8000-8003 priority ip rule。 */
-    private fun teardownIpRulesByPriority() {
-        val counts = intArrayOf(
-            drainRulesByPriority(v6 = false, priority = PRIORITY_V4),
-            drainRulesByPriority(v6 = true, priority = PRIORITY_V6),
-            drainRulesByPriority(v6 = false, priority = PRIORITY_RETURN_V4),
-            drainRulesByPriority(v6 = true, priority = PRIORITY_RETURN_V6),
-        )
-        Log.i(TAG, "teardown ip-rule removed iif-v4=${counts[0]} iif-v6=${counts[1]} return-v4=${counts[2]} return-v6=${counts[3]}")
-    }
+    private fun Map<String, String>.hasRulePriority(section: String, priority: Int): Boolean =
+        this[section]?.lineSequence()?.any { it.startsWith("$priority:") } == true
 
-    /** 清理 TPROXY 相关 iptables chain、fwmark ip rule、专用 route table。 */
-    private fun teardownTproxy() {
-        // 先拆 PREROUTING jump，再 flush CHAIN_NAME（其内部 `-j DIVERT` 规则一并清除），
-        // 然后才能 -X DIVERT。被引用的 chain 不能直接 -X。
-        // apply 时规则是 `-A PREROUTING -i <iface> -j mishka_tether`，teardown 必须精确匹配
-        // （iptables -D 不接受模糊匹配），所以列出所有引用 CHAIN_NAME 的 PREROUTING 规则
-        // 把原文 `-A PREROUTING ...` 改为 `-D PREROUTING ...` 逐条执行
-        for (bin in IPT_BINS) {
-            deletePreroutingJumpsReferencing(bin, CHAIN_NAME)
-            runWithOutput("$bin -t mangle -F $CHAIN_NAME")
-            runWithOutput("$bin -t mangle -X $CHAIN_NAME")
-            runWithOutput("$bin -t mangle -F $CHAIN_DIVERT_NAME")
-            runWithOutput("$bin -t mangle -X $CHAIN_DIVERT_NAME")
-        }
-        // fwmark ip rule
-        drainRulesByPriority(v6 = false, priority = PRIORITY_FWMARK)
-        drainRulesByPriority(v6 = true, priority = PRIORITY_FWMARK)
-        // 专用 route table
-        runWithOutput("ip route flush table $FWMARK_TABLE")
-        runWithOutput("ip -6 route flush table $FWMARK_TABLE")
-    }
-
-    /**
-     * 列出 `<bin> -t mangle -S PREROUTING` 的所有行，对每条引用 `jumpTarget` 的 `-A PREROUTING`
-     * 把前缀改成 `-D PREROUTING` 再执行。与 apply 端的 `-A` 参数一一对应，天然精确匹配；
-     * 一次扫描即可删干净（iptables -S 返回的每条规则都是独立的 `-A`，转 `-D` 后精确删除）。
-     */
-    private fun deletePreroutingJumpsReferencing(bin: String, jumpTarget: String) {
-        val list = runWithOutput("$bin -t mangle -S PREROUTING")
-        if (list.code != 0) return
-        list.output.lines()
-            .filter { it.startsWith("-A PREROUTING") && it.contains("-j $jumpTarget") }
-            .forEach { line ->
-                runWithOutput("$bin -t mangle ${line.replaceFirst("-A PREROUTING", "-D PREROUTING")}")
+    /** 一次 su 跑完多条查询，按 `--- <key>` 标记切回各段输出。 */
+    private fun runSections(probes: List<Pair<String, String>>): Map<String, String> {
+        val script = probes.joinToString("\n") { (key, cmd) -> "echo '$SECTION_MARK$key'; $cmd" }
+        val sections = mutableMapOf<String, StringBuilder>()
+        var current: StringBuilder? = null
+        runWithOutput(script).output.lineSequence().forEach { line ->
+            if (line.startsWith(SECTION_MARK)) {
+                current = StringBuilder().also { sections[line.removePrefix(SECTION_MARK)] = it }
+            } else {
+                current?.appendLine(line)
             }
-    }
-
-    private fun drainRulesByPriority(v6: Boolean, priority: Int): Int {
-        val cmd = if (v6) "ip -6 rule del priority $priority" else "ip rule del priority $priority"
-        var n = 0
-        while (n < 32) {
-            val r = runWithOutput(cmd)
-            if (r.code != 0) break
-            n++
         }
-        return n
+        return sections.mapValues { it.value.toString().trim() }
     }
 
     fun parseInterfaces(raw: String): List<String> =
@@ -498,20 +507,20 @@ object RootTetherHijacker {
      */
     private fun tag(label: String): String = "-m comment --comment \"$COMMENT_TAG_PREFIX$label\""
 
-    /** 启动代理后 dump 一次完整路由状态，便于诊断"规则加了但没生效"类问题。 */
+    /**
+     * 启动代理后 dump 一次完整路由状态，便于诊断"规则加了但没生效"类问题。
+     * 六条查询合并进一次 su：纯诊断输出不值得在启动路径上付 6 次 fork。
+     */
     private fun dumpState() {
-        val rules = runWithOutput("ip rule show").output
-        val rules6 = runWithOutput("ip -6 rule show").output
-        Log.i(TAG, "ip rule show (v4):\n$rules")
-        Log.i(TAG, "ip -6 rule show:\n$rules6")
-        val mainRoute = runWithOutput("ip route show table main").output
-        val tunRoute = runWithOutput("ip route show table $TUN_TABLE").output
-        val tproxyRoute = runWithOutput("ip route show table $FWMARK_TABLE").output
-        Log.i(TAG, "route table main:\n$mainRoute")
-        Log.i(TAG, "route table $TUN_TABLE:\n$tunRoute")
-        Log.i(TAG, "route table $FWMARK_TABLE:\n$tproxyRoute")
-        val mangle = runWithOutput("iptables -t mangle -S").output
-        Log.i(TAG, "iptables mangle -S:\n$mangle")
+        val script = listOf(
+            "ip rule show (v4)" to "ip rule show",
+            "ip -6 rule show" to "ip -6 rule show",
+            "route table main" to "ip route show table main",
+            "route table $TUN_TABLE" to "ip route show table $TUN_TABLE",
+            "route table $FWMARK_TABLE" to "ip route show table $FWMARK_TABLE",
+            "iptables mangle -S" to "$IPT4 -t mangle -S",
+        ).joinToString("\n") { (label, cmd) -> "echo '$SECTION_MARK$label'; $cmd" }
+        Log.i(TAG, "tether state dump:\n${runWithOutput(script).output}")
     }
 
     private data class ShellResult(val code: Int, val output: String)
