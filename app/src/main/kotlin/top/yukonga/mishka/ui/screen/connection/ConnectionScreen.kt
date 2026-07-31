@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -93,6 +94,12 @@ fun ConnectionScreen(
     val scrollBehavior = MiuixScrollBehavior()
     var showCloseAllDialog by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+
+    // WS 订阅只在本页存续，理由见 startObserving
+    DisposableEffect(viewModel) {
+        viewModel.startObserving()
+        onDispose { viewModel.stopObserving() }
+    }
 
     // 搜索状态
     val searchLabel = stringResource(R.string.connection_search)

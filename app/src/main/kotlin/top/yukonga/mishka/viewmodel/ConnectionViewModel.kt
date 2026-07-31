@@ -33,22 +33,43 @@ class ConnectionViewModel : ViewModel() {
     private var connectionJob: Job? = null
     private var connectionStateJob: Job? = null
 
+    /** 连接页是否在前台。VM 是进程级 single，无人观看时不该订阅全量列表 */
+    private var observing = false
+
     fun setRepository(repo: MihomoRepository?) {
+        if (repository === repo) return
         repository = repo
         connectionStateJob?.cancel()
-        if (repo != null) {
-            connectionStateJob = viewModelScope.launch {
-                repo.connectionState.collect { connected ->
-                    _uiState.value = _uiState.value.copy(isConnected = connected)
-                }
-            }
-            startConnectionCollection()
-        } else {
-            connectionJob?.cancel()
-            connectionJob = null
+        connectionJob?.cancel()
+        connectionJob = null
+        if (repo == null) {
             connectionStateJob = null
-            _uiState.value = ConnectionUiState()
+            _uiState.value = ConnectionUiState(searchQuery = _uiState.value.searchQuery)
+            return
         }
+        connectionStateJob = viewModelScope.launch {
+            repo.connectionState.collect { connected ->
+                _uiState.value = _uiState.value.copy(isConnected = connected)
+            }
+        }
+        if (observing) startConnectionCollection()
+    }
+
+    /**
+     * 订阅 `/connections`。**只在连接页可见期间调用**——该流每秒推全量连接列表，
+     * 数百条时每帧都要反序列化并重建列表，常驻代价不小。
+     */
+    fun startObserving() {
+        if (observing) return
+        observing = true
+        startConnectionCollection()
+    }
+
+    fun stopObserving() {
+        observing = false
+        connectionJob?.cancel()
+        connectionJob = null
+        _uiState.value = _uiState.value.copy(connections = persistentListOf())
     }
 
     private fun startConnectionCollection() {
