@@ -123,13 +123,6 @@ class LogViewModel : ViewModel() {
         _logs.value = persistentListOf()
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        logJob?.cancel()
-        flushJob?.cancel()
-        connectionStateJob?.cancel()
-    }
-
     companion object {
         private const val MAX_LOGS = 500
         private const val BUFFER_CAPACITY = 64

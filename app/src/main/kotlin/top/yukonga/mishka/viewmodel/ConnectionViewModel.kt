@@ -118,10 +118,4 @@ class ConnectionViewModel : ViewModel() {
             repo.closeAllConnections()
         }
     }
-
-    override fun onCleared() {
-        super.onCleared()
-        connectionJob?.cancel()
-        connectionStateJob?.cancel()
-    }
 }

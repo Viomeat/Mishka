@@ -788,11 +788,6 @@ class HomeViewModel(
         mihomoPid = -1
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        disconnectStreams()
-    }
-
     companion object {
         /** 折线图窗口点数；mihomo `/traffic` 为 1Hz 推送，即约 1 分钟历史 */
         const val TRAFFIC_HISTORY_CAPACITY = 60
