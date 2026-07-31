@@ -10,6 +10,12 @@ import top.yukonga.mishka.MainActivity
 import top.yukonga.mishka.R
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * 通知 id 分区（同一 NotificationManager 命名空间，撞号即互相覆盖/取消）：
+ * - 1..99      前台服务等固定通知
+ * - 100..999   更新结果，环形复用
+ * - 0x10000+   per 订阅的更新进度，uuid 低 16 位散列，与上面两段天然不相交
+ */
 object NotificationHelper {
 
     // VPN 服务通知
@@ -19,10 +25,13 @@ object NotificationHelper {
     // 配置更新进度通知
     private const val CHANNEL_PROFILE_STATUS = "mishka_profile_status"
     const val NOTIFICATION_ID_PROFILE_WORKER = 2
+    private const val PROFILE_PROGRESS_ID_BASE = 0x10000
 
     // 配置更新结果通知
     private const val CHANNEL_PROFILE_RESULT = "mishka_profile_result"
-    private val nextResultId = AtomicInteger(100)
+    private const val RESULT_ID_BASE = 100
+    private const val RESULT_ID_RANGE = 900
+    private val nextResultId = AtomicInteger(0)
 
     // Wi-Fi 自动切换内部服务通知与状态切换事件通知
     private const val CHANNEL_WIFI_POLICY_SERVICE = "mishka_wifi_policy_service"
@@ -31,6 +40,13 @@ object NotificationHelper {
 
     // 事件通知用固定 id 互相覆盖，只保留最新一条，避免在通知栏堆积历史事件
     private const val NOTIFICATION_ID_WIFI_POLICY_EVENT = 4
+
+    /** per 订阅的更新进度通知 id。落在 [PROFILE_PROGRESS_ID_BASE] 之上的独立区间。 */
+    fun profileProgressId(uuid: String): Int =
+        PROFILE_PROGRESS_ID_BASE + (uuid.hashCode() and 0xFFFF)
+
+    private fun nextResultId(): Int =
+        RESULT_ID_BASE + (nextResultId.getAndIncrement() % RESULT_ID_RANGE)
 
     fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -211,7 +227,7 @@ object NotificationHelper {
     // === 配置更新结果通知 ===
 
     fun notifyProfileUpdateSuccess(context: Context, name: String): Int {
-        val id = nextResultId.getAndIncrement()
+        val id = nextResultId()
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -234,7 +250,7 @@ object NotificationHelper {
     }
 
     fun notifyProfileUpdateFailed(context: Context, name: String, reason: String): Int {
-        val id = nextResultId.getAndIncrement()
+        val id = nextResultId()
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
