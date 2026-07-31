@@ -75,12 +75,19 @@
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the mihomo proxy core over a VPN tunnel for as long as the user keeps the proxy connected." />
         </service>
 
         <service
             android:name=".service.MishkaRootService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the mihomo proxy core as a privileged process for as long as the user keeps the proxy connected." />
+        </service>
 
         <service
             android:name=".service.MishkaTileService"
@@ -125,7 +132,11 @@
         <service
             android:name=".service.ProfileWorker"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Downloads and validates proxy subscription updates the user scheduled for automatic refresh." />
+        </service>
 
         <service
             android:name=".service.WifiPolicyMonitorService"
