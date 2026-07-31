@@ -1,7 +1,6 @@
 package top.yukonga.mishka.service
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
@@ -57,7 +56,9 @@ class MishkaRootService : Service() {
         }
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // 启停链全程阻塞：su fork + waitFor、iptables 退避 sleep、递归拷贝 runtime/ 沙箱。
+    // 跑在 Default 上会长时间占住数个 CPU 池线程，与 Compose 重组、导入管线抢同一批核
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runner by lazy { MihomoRunner(this) }
     private val dynamicNotification by lazy {
         DynamicNotificationManager(this, scope, MishkaApplication.instance.connectionManager)
@@ -499,7 +500,7 @@ class MishkaRootService : Service() {
 
     private fun startProcessMonitor(workDir: File) {
         monitorJob?.cancel()
-        monitorJob = scope.launch(Dispatchers.IO) {
+        monitorJob = scope.launch {
             delay(10_000)
             while (runner.isRunning) {
                 delay(5_000)
@@ -572,7 +573,7 @@ class MishkaRootService : Service() {
         monitorJob?.cancel()
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = currentSubmode.tunMode))
         dynamicNotification.stop()
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             // 先让进行中的启动协程收敛，否则下面的 startProxy 会被幂等检查挡掉
             startJob?.cancelAndJoin()
             val storage = PlatformStorage(this@MishkaRootService)
@@ -593,7 +594,7 @@ class MishkaRootService : Service() {
         monitorJob?.cancel()
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = currentSubmode.tunMode))
         dynamicNotification.stop()
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             // 用户在启动过程中按停止：先中止启动协程，避免它继续把状态写回 Running
             startJob?.cancelAndJoin()
             val storage = PlatformStorage(this@MishkaRootService)

@@ -1,7 +1,6 @@
 package top.yukonga.mishka.service
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
@@ -38,7 +37,9 @@ import kotlin.time.Clock
 @SuppressLint("VpnServicePolicy")
 class MishkaTunService : VpnService() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // 启停链全程阻塞：孤儿清理的 su 调用、mihomo fork+exec 与 waitForReady 轮询、日志尾读。
+    // 跑在 Default 上会长时间占住数个 CPU 池线程，与 Compose 重组、导入管线抢同一批核
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runner by lazy { MihomoRunner(this) }
     private val dynamicNotification by lazy {
         DynamicNotificationManager(this, scope, MishkaApplication.instance.connectionManager)
@@ -381,7 +382,7 @@ class MishkaTunService : VpnService() {
     @SuppressLint("StringFormatInvalid")
     private fun startProcessMonitor(workDir: File) {
         monitorJob?.cancel()
-        monitorJob = scope.launch(Dispatchers.IO) {
+        monitorJob = scope.launch {
             // 等待一段时间再开始监测，避免与 waitForReady 重叠
             delay(10_000)
             while (runner.isRunning) {
@@ -408,7 +409,7 @@ class MishkaTunService : VpnService() {
         monitorJob?.cancel()
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = TunMode.Vpn))
         dynamicNotification.stop()
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             // 先让进行中的启动协程收敛，否则下面的 startProxy 会被幂等检查挡掉
             startJob?.cancelAndJoin()
             runner.stop()
@@ -424,7 +425,7 @@ class MishkaTunService : VpnService() {
         monitorJob?.cancel()
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = TunMode.Vpn))
         dynamicNotification.stop()
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             // 用户在启动过程中按停止：先中止启动协程，避免它继续把状态写回 Running
             startJob?.cancelAndJoin()
             runner.stop()
@@ -472,7 +473,7 @@ class MishkaTunService : VpnService() {
         ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopping, tunMode = TunMode.Vpn))
         dynamicNotification.stop()
         PlatformStorage(this).putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             startJob?.cancelAndJoin()
             runner.stop()
             closeTunFd()
