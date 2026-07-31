@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.bundles.ktor)
     implementation(libs.bundles.miuix)
     implementation(libs.androidx.activity)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.profileinstaller)
     implementation(libs.material.icons.extended)
     implementation(libs.hiddenapibypass)

@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.g00fy2.quickie.QRResult
@@ -78,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private var qrResultCallback: ((String?) -> Unit)? = null
     private var wifiPermissionCallback: ((Boolean) -> Unit)? = null
     private var latestThemeConfig: ThemeConfig? = null
+    private var contentReady = false
 
     // 深链导入请求：AppNavigation 消费后回调置空
     private val pendingDeepLinkImport = mutableStateOf<DeepLinkImportRequest?>(null)
@@ -93,7 +95,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 必须先于 super.onCreate，postSplashScreenTheme 靠它换回 Theme.Mishka
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splashScreen.setKeepOnScreenCondition { !contentReady }
 
         consumedDeepLinkNonce = savedInstanceState?.getString(STATE_DEEPLINK_NONCE)
         acceptDeepLinkImport(intent)
@@ -272,6 +277,7 @@ class MainActivity : ComponentActivity() {
                 backupViewModel = get(),
                 onRestartApp = { restartApplication() },
             )
+            SideEffect { contentReady = true }
         }
     }
 
