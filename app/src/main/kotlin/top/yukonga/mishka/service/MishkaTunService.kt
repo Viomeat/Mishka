@@ -429,7 +429,7 @@ class MishkaTunService : VpnService() {
             runner.stop()
             closeTunFd()
             PlatformStorage(this@MishkaTunService).putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+            ProxyServiceBridge.markStopped(TunMode.Vpn)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -459,11 +459,7 @@ class MishkaTunService : VpnService() {
         runner.stop()
         closeTunFd()
         PlatformStorage(this).putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-        // 失败路径 updateState(Error) + stopSelf() 紧接着就走到这里，无条件写 Stopped 会抹掉
-        // 刚写入的 Error，用户只看到「未运行」
-        if (ProxyServiceBridge.state.value.state != ProxyState.Error) {
-            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
-        }
+        ProxyServiceBridge.markStoppedUnlessError(TunMode.Vpn)
         scope.cancel()
         Log.i(TAG, "MishkaTunService destroyed")
         super.onDestroy()
@@ -479,7 +475,7 @@ class MishkaTunService : VpnService() {
             startJob?.cancelAndJoin()
             runner.stop()
             closeTunFd()
-            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+            ProxyServiceBridge.markStopped(TunMode.Vpn)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }

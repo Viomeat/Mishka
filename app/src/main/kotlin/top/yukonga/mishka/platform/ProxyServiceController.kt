@@ -219,7 +219,7 @@ class ProxyServiceController(private val context: Context) {
         if (bridgeState == ProxyState.Running || bridgeState == ProxyState.Starting) {
             if (getTunMode() == TunMode.Vpn && !hasVpnPermission()) {
                 storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-                ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+                ProxyServiceBridge.markStopped(activeModeOrStored())
             }
             return
         }

@@ -283,7 +283,7 @@ class MishkaRootService : Service() {
                 Log.i(TAG, "Attach-only reopen: no live mihomo to reconnect, staying stopped")
                 clearPersistedState(storage)
                 storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-                ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped, tunMode = tunMode))
+                ProxyServiceBridge.markStopped(tunMode)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return@launch
@@ -602,7 +602,7 @@ class MishkaRootService : Service() {
             runningSubscriptionId?.let { ProfileFileOps.cleanupRootRuntime(this@MishkaRootService, it) }
             clearPersistedState(storage)
             storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
-            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
+            ProxyServiceBridge.markStopped(currentSubmode.tunMode)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -613,11 +613,7 @@ class MishkaRootService : Service() {
         monitorJob?.cancel()
         dynamicNotification.stop()
         // 注意：onDestroy 不 kill mihomo，让它继续运行以便重连
-        // 失败路径 updateState(Error) + stopSelf() 紧接着就走到这里，无条件写 Stopped 会抹掉
-        // 刚写入的 Error，用户只看到「未运行」
-        if (ProxyServiceBridge.state.value.state != ProxyState.Error) {
-            ProxyServiceBridge.updateState(ProxyServiceStatus(ProxyState.Stopped))
-        }
+        ProxyServiceBridge.markStoppedUnlessError(currentSubmode.tunMode)
         scope.cancel()
         Log.i(TAG, "MishkaRootService destroyed")
         super.onDestroy()
