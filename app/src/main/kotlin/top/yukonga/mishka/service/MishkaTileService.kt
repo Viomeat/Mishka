@@ -8,6 +8,8 @@ import android.service.quicksettings.TileService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.R
 import top.yukonga.mishka.platform.ProxyServiceBridge
@@ -16,11 +18,15 @@ import top.yukonga.mishka.platform.ProxyState
 
 class MishkaTileService : TileService() {
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateJob: Job? = null
 
     override fun onStartListening() {
         super.onStartListening()
-        stateJob = CoroutineScope(Dispatchers.Main).launch {
+        // 系统重复绑定时会再进一次而没有配对的 onStopListening，不先取消就留下一条仍在
+        // updateTile 的旧 collector
+        stateJob?.cancel()
+        stateJob = scope.launch {
             ProxyServiceBridge.state.collect { status ->
                 val tile = qsTile ?: return@collect
                 tile.state = when (status.state) {
@@ -43,6 +49,11 @@ class MishkaTileService : TileService() {
         stateJob?.cancel()
         stateJob = null
         super.onStopListening()
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 
     override fun onClick() {
