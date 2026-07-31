@@ -28,27 +28,34 @@ class AppListProvider constructor(private val context: PlatformContext) {
         }
     }
 
+    /**
+     * 可参与分应用代理的应用：持 INTERNET 权限的，加上系统应用（其网络能力不都经权限声明）。
+     *
+     * 刻意不用 `getInstalledPackages(GET_PERMISSIONS)`——那会把每个包的完整权限数组搬过
+     * Binder，装机量大时直接以 TransactionTooLargeException 崩在分应用代理页。两次窄查询
+     * 各自只带包名与 ApplicationInfo，代价远低于一次宽查询。
+     */
     suspend fun getInstalledApps(): ImmutableList<AppInfo> = withContext(Dispatchers.IO) {
         val pm = context.packageManager
         val selfPackage = context.packageName
 
         @Suppress("DEPRECATION")
-        val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        val internetHolders = pm
+            .getPackagesHoldingPermissions(arrayOf(Manifest.permission.INTERNET), 0)
+            .mapTo(HashSet()) { it.packageName }
 
-        packages
-            .filter { pkg ->
-                // 排除自身
-                pkg.packageName != selfPackage &&
-                        // 需有 INTERNET 权限或为系统应用
-                        (pkg.requestedPermissions?.contains(Manifest.permission.INTERNET) == true ||
-                                pkg.applicationInfo?.let { it.flags and ApplicationInfo.FLAG_SYSTEM != 0 } == true)
+        @Suppress("DEPRECATION")
+        pm.getInstalledApplications(0)
+            .filter { app ->
+                app.packageName != selfPackage &&
+                        (app.packageName in internetHolders ||
+                                app.flags and ApplicationInfo.FLAG_SYSTEM != 0)
             }
-            .mapNotNull { pkg ->
-                val appInfo = pkg.applicationInfo ?: return@mapNotNull null
+            .map { app ->
                 AppInfo(
-                    packageName = pkg.packageName,
-                    appName = appInfo.loadLabel(pm).toString(),
-                    isSystemApp = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
+                    packageName = app.packageName,
+                    appName = app.loadLabel(pm).toString(),
+                    isSystemApp = app.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 )
             }
             .sortedBy { it.appName.lowercase() }
