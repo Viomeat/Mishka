@@ -115,6 +115,9 @@ class ProxyServiceController(private val context: Context) {
      * 纯校验版：active 订阅存在且 config.yaml 已落盘时返回其 uuid，否则 null。无任何副作用，
      * 供自动连接这类「不该因缺订阅打断用户」的静默路径使用。
      */
+    /** 是否还有可启动的 active 订阅。无副作用，供「删光后该停还是该重启」这类决策使用。 */
+    fun hasStartableSubscription(): Boolean = startableSubscriptionId() != null
+
     private fun startableSubscriptionId(subscriptionId: String? = null): String? {
         val effective = subscriptionId
             ?: storage.getString(StorageKeys.ACTIVE_PROFILE_UUID, "").ifEmpty { null }

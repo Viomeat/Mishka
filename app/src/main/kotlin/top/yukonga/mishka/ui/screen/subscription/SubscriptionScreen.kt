@@ -182,7 +182,9 @@ fun SubscriptionScreen(
                             onActiveChanged?.invoke()
                         },
                         onRefresh = { viewModel.fetchSubscription(sub.id) },
-                        onDelete = { viewModel.removeSubscription(sub.id) },
+                        onDelete = {
+                            viewModel.removeSubscription(sub.id) { onActiveChanged?.invoke() }
+                        },
                         onEdit = { onNavigateEdit(sub.id) },
                     )
                 }

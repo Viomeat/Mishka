@@ -153,10 +153,16 @@ class SubscriptionViewModel(
         }
     }
 
-    fun removeSubscription(id: String) {
+    /**
+     * 删除订阅。删的若是 active，[onActiveChanged] 要等 DB 与文件都落定后才回调——
+     * `repository.delete` 会静默把 active 挪到剩余第一条，提前回调会让重启拿到刚删掉的 uuid。
+     */
+    fun removeSubscription(id: String, onActiveChanged: () -> Unit = {}) {
         viewModelScope.launch {
+            val wasActive = _uiState.value.subscriptions.find { it.id == id }?.isActive == true
             repository.delete(id)
             fileManager.deleteDirs(id)
+            if (wasActive) onActiveChanged()
         }
     }
 

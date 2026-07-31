@@ -672,14 +672,23 @@ class HomeViewModel(
     }
 
     /**
-     * 订阅切换后调用：把运行中的代理切到新 active 订阅。基于权威的 `serviceController.status`
+     * active 订阅变更后调用（切换或删除）：把运行中的代理切到新 active 订阅。
+     * 删除路径必须等 DB 与文件落定后才调，见 `SubscriptionViewModel.removeSubscription`。
+     * 基于权威的 `serviceController.status`
      * （ProxyServiceBridge）状态决策，而非滞后的 `uiState.isRunning`——后者在代理 Starting
      * 窗口（启动后约 10s）内仍为 false，会漏掉重启导致「界面显示新订阅、代理仍跑旧订阅」。
      * Starting/Stopping 过渡态先记挂起标志，待状态切到 Running 再重启，避免在 Service 内与
      * 启动中的协程并发重启产生竞态。
      */
     fun onActiveSubscriptionChanged() {
-        when (serviceController.status.value.state) {
+        val state = serviceController.status.value.state
+        // 删光最后一条订阅时没有新配置可切，restart 只会在启动校验里失败成 Error 态
+        if (!serviceController.hasStartableSubscription()) {
+            pendingRestartOnRunning = false
+            if (state == ProxyState.Running || state == ProxyState.Starting) stopProxy()
+            return
+        }
+        when (state) {
             ProxyState.Running -> restartProxy()
             ProxyState.Starting, ProxyState.Stopping -> pendingRestartOnRunning = true
             ProxyState.Stopped, ProxyState.Error -> {
