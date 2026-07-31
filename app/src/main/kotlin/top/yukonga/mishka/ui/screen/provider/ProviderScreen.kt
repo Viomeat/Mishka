@@ -270,7 +270,10 @@ private fun ProviderItem(
     Column {
         BasicComponent(
             title = provider.name,
-            summary = provider.type,
+            summary = stringResource(
+                if (provider.isRuleProvider) R.string.provider_kind_rule else R.string.provider_kind_proxy,
+                provider.type,
+            ),
             endActions = {
                 if (provider.vehicleType != "Inline") {
                     Row(

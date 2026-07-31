@@ -422,14 +422,15 @@ data class LiveProviderSnapshot(
 )
 
 /**
- * 订阅导入流程的类型化错误。所有错误都带有清晰的中文 message，避免 `e.message == null` 漏到 UI。
+ * 订阅导入流程的类型化错误。message 是给日志看的英文技术描述，**用户可见文案由 UI 层按类型映射**
+ * （见 `SubscriptionViewModel.localizedMessage`）——data 层拿不到 locale，也不该决定怎么说人话。
  */
 sealed class ImportError(message: String) : Exception(message) {
     class HttpStatus(val code: Int, description: String) : ImportError("HTTP $code $description")
-    class EmptyBody : ImportError("订阅返回内容为空")
-    class InvalidScheme(val source: String) : ImportError("URL 必须以 http:// 或 https:// 开头：$source")
-    class InvalidName : ImportError("订阅名称不能为空")
-    class IntervalTooSmall : ImportError("自动更新间隔最小 15 分钟（0 表示禁用）")
+    class EmptyBody : ImportError("empty response body")
+    class InvalidScheme(val source: String) : ImportError("unsupported scheme: $source")
+    class InvalidName : ImportError("empty profile name")
+    class IntervalTooSmall : ImportError("auto-update interval below minimum")
 }
 
 /**

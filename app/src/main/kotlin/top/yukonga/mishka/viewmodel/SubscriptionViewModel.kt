@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.R
 import top.yukonga.mishka.data.repository.ConfigValidationException
+import top.yukonga.mishka.data.repository.ImportError
 import top.yukonga.mishka.data.repository.ImportProgress
 import top.yukonga.mishka.data.repository.ProfileProcessor
 import top.yukonga.mishka.domain.model.ProfileType
@@ -203,7 +204,7 @@ class SubscriptionViewModel(
                         val label = if (e is ConfigValidationException) {
                             context.getString(R.string.error_validation_failed, e.describe())
                         } else {
-                            context.getString(R.string.error_update_failed, e.describe())
+                            context.getString(R.string.error_update_failed, localizedMessage(e))
                         }
                         failures += "${sub.name}: $label"
                     }
@@ -296,7 +297,7 @@ class SubscriptionViewModel(
                 val message = if (e is ConfigValidationException) {
                     context.getString(R.string.error_validation_failed, e.describe())
                 } else {
-                    context.getString(errorKey, e.describe())
+                    context.getString(errorKey, localizedMessage(e))
                 }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -308,6 +309,19 @@ class SubscriptionViewModel(
                 currentJob = null
             }
         }
+    }
+
+    /**
+     * 把 data 层的类型化错误映射成本地化文案。[ImportError] 的 message 只是英文技术描述，
+     * 直接展示既不合语言也读不懂；其余异常仍走 [describe] 兜住无参异常的 null message。
+     */
+    private fun localizedMessage(e: Throwable): String = when (e) {
+        is ImportError.EmptyBody -> context.getString(R.string.error_import_empty_body)
+        is ImportError.InvalidScheme -> context.getString(R.string.error_import_invalid_scheme, e.source)
+        is ImportError.InvalidName -> context.getString(R.string.error_import_invalid_name)
+        is ImportError.IntervalTooSmall -> context.getString(R.string.error_import_interval_too_small)
+        // HttpStatus 本身就是 "HTTP 404 Not Found" 这类技术串，无可本地化的部分
+        else -> e.describe()
     }
 
     /**

@@ -226,6 +226,10 @@
     <string name="error_save_failed">Save failed: %1$s</string>
     <string name="error_duplicate_failed">Duplicate failed: %1$s</string>
     <string name="error_validation_failed">Validation failed: %1$s</string>
+    <string name="error_import_empty_body">The subscription returned an empty response</string>
+    <string name="error_import_invalid_scheme">URL must start with http:// or https://: %1$s</string>
+    <string name="error_import_invalid_name">Subscription name cannot be empty</string>
+    <string name="error_import_interval_too_small">Auto-update interval must be at least 15 minutes (0 disables it)</string>
 
     <!-- Connection -->
     <string name="connection_title">Connections</string>
@@ -257,12 +261,15 @@
     <string name="dns_clear_fakeip">Clear FakeIP Cache</string>
     <string name="dns_querying">Querying...</string>
     <string name="dns_query">Query</string>
+    <string name="dns_query_failed">Query failed: %1$s</string>
 
     <!-- Provider -->
     <string name="provider_title">Providers</string>
     <string name="provider_rule_providers">Rule Providers</string>
     <string name="provider_proxy_providers">Proxy Providers</string>
     <string name="provider_no_providers">No providers</string>
+    <string name="provider_kind_proxy">Proxy (%1$s)</string>
+    <string name="provider_kind_rule">Rule (%1$s)</string>
     <string name="provider_start_first">Please start the proxy service first</string>
     <string name="provider_updating_title">Updating provider</string>
     <string name="provider_updating_single">Updating %1$s…</string>

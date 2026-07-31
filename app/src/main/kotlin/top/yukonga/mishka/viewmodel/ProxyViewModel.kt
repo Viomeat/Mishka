@@ -1,5 +1,6 @@
 package top.yukonga.mishka.viewmodel
 
+import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,6 +24,7 @@ import top.yukonga.mishka.data.database.SelectionEntity
 import top.yukonga.mishka.domain.repository.MihomoRepository
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.StorageKeys
+import top.yukonga.mishka.util.describe
 
 @Immutable
 data class ProxyGroupUi(
@@ -216,7 +218,9 @@ class ProxyViewModel(
                     restoreSelections(repo, groups)
                 }
             }.onFailure {
-                _uiState.value = _uiState.value.copy(error = "加载失败: ${it.message}")
+                // 只存原因，前缀文案由渲染方本地化；describe 兜住 Ktor 无参异常的 null message
+                Log.w(TAG, "loadProxies failed", it)
+                _uiState.value = _uiState.value.copy(error = it.describe())
             }
         }
     }
@@ -323,5 +327,6 @@ class ProxyViewModel(
         const val GLOBAL_GROUP = "GLOBAL"
         const val MODE_GLOBAL = "global"
         const val MODE_DIRECT = "direct"
+        private const val TAG = "ProxyViewModel"
     }
 }

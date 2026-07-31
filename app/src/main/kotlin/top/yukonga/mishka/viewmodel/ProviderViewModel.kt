@@ -22,7 +22,9 @@ import top.yukonga.mishka.util.describe
 
 data class ProviderItemUi(
     val name: String,
-    val type: String,       // 用户可见的类型字符串，如"代理(http)" / "规则(Domain)"
+    // 技术类型原值（proxy provider 取 type，rule provider 取 vehicleType）；
+    // 展示成「代理(…)/规则(…)」由屏幕按 isRuleProvider 本地化拼装
+    val type: String,
     val vehicleType: String,
     val updatedAt: String,
     val isRuleProvider: Boolean,
@@ -93,7 +95,7 @@ class ProviderViewModel : ViewModel() {
                         items.add(
                             ProviderItemUi(
                                 name = info.name,
-                                type = "代理(${info.type})",
+                                type = info.type,
                                 vehicleType = info.vehicleType,
                                 updatedAt = info.updatedAt,
                                 isRuleProvider = false,
@@ -109,7 +111,7 @@ class ProviderViewModel : ViewModel() {
                         items.add(
                             ProviderItemUi(
                                 name = info.name,
-                                type = "规则(${info.vehicleType})",
+                                type = info.vehicleType,
                                 vehicleType = info.vehicleType,
                                 updatedAt = info.updatedAt,
                                 isRuleProvider = true,

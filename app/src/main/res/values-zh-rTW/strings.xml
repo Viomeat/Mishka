@@ -224,6 +224,10 @@
     <string name="error_save_failed">儲存失敗: %1$s</string>
     <string name="error_duplicate_failed">複製失敗: %1$s</string>
     <string name="error_validation_failed">設定檔驗證失敗: %1$s</string>
+    <string name="error_import_empty_body">訂閱回傳內容為空</string>
+    <string name="error_import_invalid_scheme">URL 必須以 http:// 或 https:// 開頭：%1$s</string>
+    <string name="error_import_invalid_name">訂閱名稱不能為空</string>
+    <string name="error_import_interval_too_small">自動更新間隔最少 15 分鐘（0 表示停用）</string>
 
     <!-- Connection -->
     <string name="connection_title">連線</string>
@@ -255,12 +259,15 @@
     <string name="dns_clear_fakeip">清除 FakeIP 快取</string>
     <string name="dns_querying">查詢中...</string>
     <string name="dns_query">查詢</string>
+    <string name="dns_query_failed">查詢失敗：%1$s</string>
 
     <!-- Provider -->
     <string name="provider_title">外部資源</string>
     <string name="provider_rule_providers">規則提供者</string>
     <string name="provider_proxy_providers">代理提供者</string>
     <string name="provider_no_providers">尚無外部資源</string>
+    <string name="provider_kind_proxy">代理（%1$s）</string>
+    <string name="provider_kind_rule">規則（%1$s）</string>
     <string name="provider_start_first">請先啟動代理服務</string>
     <string name="provider_updating_title">正在更新資源</string>
     <string name="provider_updating_single">正在更新 %1$s…</string>

@@ -43,6 +43,7 @@ import top.yukonga.mishka.ui.component.CardItem
 import top.yukonga.mishka.ui.component.blur.BlurredBar
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
 import top.yukonga.mishka.ui.component.groupedCardItems
+import top.yukonga.mishka.ui.theme.StatusColors
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
 import top.yukonga.mishka.viewmodel.DnsQueryViewModel
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -211,8 +212,8 @@ fun DnsQueryScreen(
                         insideMargin = PaddingValues(16.dp),
                     ) {
                         Text(
-                            text = uiState.error,
-                            color = Color(0xFFE53935),
+                            text = stringResource(R.string.dns_query_failed, uiState.error),
+                            color = StatusColors.danger,
                         )
                     }
                 }

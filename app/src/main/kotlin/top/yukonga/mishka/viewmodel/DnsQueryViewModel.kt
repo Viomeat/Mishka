@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.domain.model.DnsAnswer
 import top.yukonga.mishka.domain.repository.MihomoRepository
+import top.yukonga.mishka.util.describe
 
 @Immutable
 data class DnsQueryUiState(
@@ -59,9 +60,10 @@ class DnsQueryViewModel : ViewModel() {
                     )
                 }
                 .onFailure {
+                    // 只存原因，前缀文案由屏幕本地化；describe 兜住 Ktor 无参异常的 null message
                     _uiState.value = _uiState.value.copy(
                         isQuerying = false,
-                        error = "查询失败: ${it.message}",
+                        error = it.describe(),
                     )
                 }
         }
