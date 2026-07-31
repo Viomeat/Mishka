@@ -9,54 +9,57 @@ import kotlinx.serialization.Serializable
  * ParseRawConfig 之前经 `json.NewDecoder(...).Decode(rawCfg)` 注入。
  *
  * 序列化时 null 字段不应输出，mihomo decode 跳过未提及字段即保留 RawConfig 原值。
+ *
+ * 全树只读：[OverrideJsonStore] 把同一个实例作为 StateFlow 的值发布出去，就地改字段会让
+ * StateFlow 的相等去重把这次更新静默吞掉。修改一律经 `copy()`。
  */
 @Serializable
 data class ConfigurationOverride(
-    @SerialName("port") var httpPort: Int? = null,
-    @SerialName("socks-port") var socksPort: Int? = null,
-    @SerialName("redir-port") var redirPort: Int? = null,
-    @SerialName("tproxy-port") var tproxyPort: Int? = null,
-    @SerialName("mixed-port") var mixedPort: Int? = null,
-    @SerialName("routing-mark") var routingMark: Int? = null,
-    @SerialName("allow-lan") var allowLan: Boolean? = null,
-    @SerialName("ipv6") var ipv6: Boolean? = null,
-    @SerialName("bind-address") var bindAddress: String? = null,
-    @SerialName("log-level") var logLevel: String? = null,
-    @SerialName("mode") var mode: String? = null,
-    @SerialName("external-controller") var externalController: String? = null,
-    @SerialName("secret") var secret: String? = null,
-    @SerialName("unified-delay") var unifiedDelay: Boolean? = null,
-    @SerialName("geodata-mode") var geodataMode: Boolean? = null,
-    @SerialName("tcp-concurrent") var tcpConcurrent: Boolean? = null,
-    @SerialName("find-process-mode") var findProcessMode: String? = null,
-    @SerialName("dns") var dns: DnsOverride? = null,
-    @SerialName("sniffer") var sniffer: SnifferOverride? = null,
-    @SerialName("tun") var tun: TunOverride? = null,
-    @SerialName("profile") var profile: ProfileOverride? = null,
+    @SerialName("port") val httpPort: Int? = null,
+    @SerialName("socks-port") val socksPort: Int? = null,
+    @SerialName("redir-port") val redirPort: Int? = null,
+    @SerialName("tproxy-port") val tproxyPort: Int? = null,
+    @SerialName("mixed-port") val mixedPort: Int? = null,
+    @SerialName("routing-mark") val routingMark: Int? = null,
+    @SerialName("allow-lan") val allowLan: Boolean? = null,
+    @SerialName("ipv6") val ipv6: Boolean? = null,
+    @SerialName("bind-address") val bindAddress: String? = null,
+    @SerialName("log-level") val logLevel: String? = null,
+    @SerialName("mode") val mode: String? = null,
+    @SerialName("external-controller") val externalController: String? = null,
+    @SerialName("secret") val secret: String? = null,
+    @SerialName("unified-delay") val unifiedDelay: Boolean? = null,
+    @SerialName("geodata-mode") val geodataMode: Boolean? = null,
+    @SerialName("tcp-concurrent") val tcpConcurrent: Boolean? = null,
+    @SerialName("find-process-mode") val findProcessMode: String? = null,
+    @SerialName("dns") val dns: DnsOverride? = null,
+    @SerialName("sniffer") val sniffer: SnifferOverride? = null,
+    @SerialName("tun") val tun: TunOverride? = null,
+    @SerialName("profile") val profile: ProfileOverride? = null,
 )
 
 @Serializable
 data class DnsOverride(
-    @SerialName("enable") var enable: Boolean? = null,
-    @SerialName("listen") var listen: String? = null,
-    @SerialName("ipv6") var ipv6: Boolean? = null,
-    @SerialName("prefer-h3") var preferH3: Boolean? = null,
-    @SerialName("use-hosts") var useHosts: Boolean? = null,
-    @SerialName("enhanced-mode") var enhancedMode: String? = null,
-    @SerialName("nameserver") var nameserver: List<String>? = null,
-    @SerialName("fallback") var fallback: List<String>? = null,
-    @SerialName("default-nameserver") var defaultNameserver: List<String>? = null,
-    @SerialName("fake-ip-filter") var fakeIpFilter: List<String>? = null,
+    @SerialName("enable") val enable: Boolean? = null,
+    @SerialName("listen") val listen: String? = null,
+    @SerialName("ipv6") val ipv6: Boolean? = null,
+    @SerialName("prefer-h3") val preferH3: Boolean? = null,
+    @SerialName("use-hosts") val useHosts: Boolean? = null,
+    @SerialName("enhanced-mode") val enhancedMode: String? = null,
+    @SerialName("nameserver") val nameserver: List<String>? = null,
+    @SerialName("fallback") val fallback: List<String>? = null,
+    @SerialName("default-nameserver") val defaultNameserver: List<String>? = null,
+    @SerialName("fake-ip-filter") val fakeIpFilter: List<String>? = null,
 )
 
 @Serializable
 data class SnifferOverride(
-    @SerialName("enable") var enable: Boolean? = null,
-    @SerialName("force-dns-mapping") var forceDnsMapping: Boolean? = null,
-    @SerialName("parse-pure-ip") var parsePureIp: Boolean? = null,
-    @SerialName("override-destination") var overrideDestination: Boolean? = null,
-    @SerialName("force-domain") var forceDomain: List<String>? = null,
-    @SerialName("skip-domain") var skipDomain: List<String>? = null,
+    @SerialName("enable") val enable: Boolean? = null,
+    @SerialName("force-dns-mapping") val forceDnsMapping: Boolean? = null,
+    @SerialName("parse-pure-ip") val parsePureIp: Boolean? = null,
+    @SerialName("override-destination") val overrideDestination: Boolean? = null,
+    @SerialName("force-domain") val forceDomain: List<String>? = null,
+    @SerialName("skip-domain") val skipDomain: List<String>? = null,
 )
 
 /**
@@ -65,28 +68,28 @@ data class SnifferOverride(
  */
 @Serializable
 data class TunOverride(
-    @SerialName("enable") var enable: Boolean? = null,
-    @SerialName("device") var device: String? = null,
-    @SerialName("stack") var stack: String? = null,
-    @SerialName("file-descriptor") var fileDescriptor: Int? = null,
-    @SerialName("auto-route") var autoRoute: Boolean? = null,
-    @SerialName("auto-detect-interface") var autoDetectInterface: Boolean? = null,
-    @SerialName("route-exclude-address") var routeExcludeAddress: List<String>? = null,
-    @SerialName("inet6-address") var inet6Address: List<String>? = null,
-    @SerialName("dns-hijack") var dnsHijack: List<String>? = null,
-    @SerialName("include-package") var includePackage: List<String>? = null,
-    @SerialName("exclude-package") var excludePackage: List<String>? = null,
-    @SerialName("iproute2-table-index") var iproute2TableIndex: Int? = null,
-    @SerialName("iproute2-rule-index") var iproute2RuleIndex: Int? = null,
-    @SerialName("mtu") var mtu: Int? = null,
-    @SerialName("gso") var gso: Boolean? = null,
-    @SerialName("gso-max-size") var gsoMaxSize: Int? = null,
+    @SerialName("enable") val enable: Boolean? = null,
+    @SerialName("device") val device: String? = null,
+    @SerialName("stack") val stack: String? = null,
+    @SerialName("file-descriptor") val fileDescriptor: Int? = null,
+    @SerialName("auto-route") val autoRoute: Boolean? = null,
+    @SerialName("auto-detect-interface") val autoDetectInterface: Boolean? = null,
+    @SerialName("route-exclude-address") val routeExcludeAddress: List<String>? = null,
+    @SerialName("inet6-address") val inet6Address: List<String>? = null,
+    @SerialName("dns-hijack") val dnsHijack: List<String>? = null,
+    @SerialName("include-package") val includePackage: List<String>? = null,
+    @SerialName("exclude-package") val excludePackage: List<String>? = null,
+    @SerialName("iproute2-table-index") val iproute2TableIndex: Int? = null,
+    @SerialName("iproute2-rule-index") val iproute2RuleIndex: Int? = null,
+    @SerialName("mtu") val mtu: Int? = null,
+    @SerialName("gso") val gso: Boolean? = null,
+    @SerialName("gso-max-size") val gsoMaxSize: Int? = null,
 )
 
 @Serializable
 data class ProfileOverride(
-    @SerialName("store-selected") var storeSelected: Boolean? = null,
-    @SerialName("store-fake-ip") var storeFakeIp: Boolean? = null,
+    @SerialName("store-selected") val storeSelected: Boolean? = null,
+    @SerialName("store-fake-ip") val storeFakeIp: Boolean? = null,
 )
 
 /**
