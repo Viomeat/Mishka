@@ -27,9 +27,6 @@ interface ImportedDao {
     @Query("DELETE FROM imported WHERE uuid = :uuid")
     suspend fun remove(uuid: String)
 
-    @Query("SELECT EXISTS(SELECT 1 FROM imported WHERE uuid = :uuid)")
-    suspend fun exists(uuid: String): Boolean
-
     @Query("SELECT COUNT(*) FROM imported")
     suspend fun count(): Int
 
