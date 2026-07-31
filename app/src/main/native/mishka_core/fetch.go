@@ -200,17 +200,11 @@ func fetchURL(ctx context.Context, u *url.URL, dest string, result *FetchResult,
 	if err := os.MkdirAll(P.Dir(dest), 0700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	n, err := writeFileAtomic(dest, resp.Body)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		_ = os.Remove(dest)
-		return err
-	}
-	if fi, err := os.Stat(dest); err != nil || fi.Size() == 0 {
+	if n == 0 {
 		_ = os.Remove(dest)
 		return errors.New("empty response body")
 	}
@@ -358,6 +352,44 @@ func prefetchProviders(ctx context.Context, token int32, cfg *config.RawConfig, 
 	wg.Wait()
 }
 
+// 写临时文件再 rename（同目录 rename 在 ext4/f2fs 上原子）。直写目标路径时进程被杀 /
+// 断电 / OOM kill 都会留下截断的非空 YAML，而 prefetch 只按 os.Stat 判存在就跳过，
+// 坏文件从此永远不会重下——只能删订阅重导。
+//
+// 不能用 defer f.Close()：rename 前必须显式 Close 并检查错误，否则写缓冲的错误被吞掉。
+func writeFileAtomic(dest string, src io.Reader) (int64, error) {
+	tmp, err := os.CreateTemp(path.Dir(dest), path.Base(dest)+".tmp")
+	if err != nil {
+		return 0, err
+	}
+	tmpName := tmp.Name()
+	fail := func(err error) (int64, error) {
+		tmp.Close()
+		os.Remove(tmpName)
+		return 0, err
+	}
+	n, err := io.Copy(tmp, src)
+	if err != nil {
+		return fail(err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return 0, err
+	}
+	if err := os.Chmod(tmpName, 0600); err != nil {
+		os.Remove(tmpName)
+		return 0, err
+	}
+	if err := os.Rename(tmpName, dest); err != nil {
+		os.Remove(tmpName)
+		return 0, err
+	}
+	return n, nil
+}
+
 func fetchProvider(ctx context.Context, u *url.URL, dest string, userAgent string) error {
 	subCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
@@ -373,16 +405,8 @@ func fetchProvider(ctx context.Context, u *url.URL, dest string, userAgent strin
 	if err := os.MkdirAll(path.Dir(dest), 0700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		_ = os.Remove(dest)
-		return err
-	}
-	return nil
+	_, err = writeFileAtomic(dest, resp.Body)
+	return err
 }
 
 func forEachProviders(cfg *config.RawConfig, fn func(index, total int, key string, provider map[string]any, kind string)) {
