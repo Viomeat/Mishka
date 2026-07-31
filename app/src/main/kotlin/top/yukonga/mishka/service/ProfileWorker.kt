@@ -8,10 +8,8 @@ import android.os.IBinder
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import top.yukonga.mishka.R
@@ -22,7 +20,7 @@ import top.yukonga.mishka.data.repository.SubscriptionProxyResolver
 import top.yukonga.mishka.data.repository.SubscriptionRepositoryImpl
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.util.describe
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 配置后台更新前台服务。
@@ -33,7 +31,11 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class ProfileWorker : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val jobs = ConcurrentLinkedQueue<Job>()
+    private val inFlight = AtomicInteger(0)
+
+    // onCreate 起前台失败后已 stopSelf，之后到达的 start 不能再接活
+    @Volatile
+    private var foregroundFailed = false
 
     // 与 UI 侧共享同一 store：内存值是权威值，自建实例读不到刚落的设置
     private val overrideStore: OverrideJsonStore by inject()
@@ -52,35 +54,46 @@ class ProfileWorker : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
-            stopSelf()
-            return
-        }
-
-        // 所有任务完成后自动停止
-        scope.launch {
-            delay(10_000) // 等待任务提交
-            while (true) {
-                jobs.poll()?.join() ?: break
-            }
+            foregroundFailed = true
             stopSelf()
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (foregroundFailed) return START_NOT_STICKY
         when (intent?.action) {
-            ACTION_SCHEDULE_UPDATES -> {
-                jobs.offer(scope.launch { updateScheduler.reconcileNow() })
-            }
+            ACTION_SCHEDULE_UPDATES -> launchTracked(startId) { updateScheduler.reconcileNow() }
 
             ACTION_UPDATE_PROFILE -> {
                 val uuid = intent.data?.host
-                if (uuid != null) {
-                    val job = scope.launch { runUpdate(uuid) }
-                    jobs.offer(job)
-                }
+                if (uuid != null) launchTracked(startId) { runUpdate(uuid) } else stopIfIdle(startId)
             }
+
+            else -> stopIfIdle(startId)
         }
         return START_NOT_STICKY
+    }
+
+    /**
+     * 跑一件任务，完成后以**本次** startId 请求停止。
+     *
+     * `stopSelfResult` 只在没有更新的 start 到达时才真停，那条更新的请求会由它自己的任务
+     * 再试一次——「等 10s 再 drain 队列」做不到这点：`poll()` 返回 null 与 `stopSelf()` 之间
+     * 到达的请求入队后无人 join，onDestroy 的 `scope.cancel()` 直接把它掐掉，更新静默失败。
+     */
+    private fun launchTracked(startId: Int, block: suspend () -> Unit) {
+        inFlight.incrementAndGet()
+        scope.launch {
+            try {
+                block()
+            } finally {
+                if (inFlight.decrementAndGet() == 0) stopSelfResult(startId)
+            }
+        }
+    }
+
+    private fun stopIfIdle(startId: Int) {
+        if (inFlight.get() == 0) stopSelfResult(startId)
     }
 
     override fun onDestroy() {
@@ -94,7 +107,7 @@ class ProfileWorker : Service() {
         val imported = importedDao.queryByUUID(uuid) ?: return
 
         val notificationManager = getSystemService(NotificationManager::class.java)
-        val statusId = NotificationHelper.NOTIFICATION_ID_PROFILE_WORKER + uuid.hashCode().and(0xFFFF)
+        val statusId = NotificationHelper.profileProgressId(uuid)
 
         val storage = PlatformStorage(this)
         val fileManager = AndroidProfileFileManager(this)
