@@ -27,6 +27,7 @@ import top.yukonga.mishka.platform.AppListProvider
 import top.yukonga.mishka.platform.BootSession
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.ProxyServiceBridge
+import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.platform.ProxyServiceStatus
 import top.yukonga.mishka.platform.ProxyState
 import top.yukonga.mishka.platform.StorageKeys
@@ -126,7 +127,7 @@ class MishkaRootService : Service() {
         }
         when (intent?.action) {
             ACTION_START -> {
-                val subscriptionId = intent.getStringExtra(EXTRA_SUBSCRIPTION_ID)
+                val subscriptionId = intent.getStringExtra(ProxyServiceController.EXTRA_SUBSCRIPTION_ID)
                 // attach-only：reopen 触发的重连请求，只允许重连活着的进程，禁止全新启动
                 val attachOnly = intent.getBooleanExtra(EXTRA_ATTACH_ONLY, false)
                 startProxy(subscriptionId, attachOnly)
@@ -134,7 +135,7 @@ class MishkaRootService : Service() {
 
             ACTION_STOP -> stopProxy()
             ACTION_RESTART -> {
-                val subscriptionId = intent.getStringExtra(EXTRA_SUBSCRIPTION_ID)
+                val subscriptionId = intent.getStringExtra(ProxyServiceController.EXTRA_SUBSCRIPTION_ID)
                 restartProxy(subscriptionId)
             }
         }
@@ -624,36 +625,11 @@ class MishkaRootService : Service() {
         const val ACTION_START = "top.yukonga.mishka.ROOT_START"
         const val ACTION_STOP = "top.yukonga.mishka.ROOT_STOP"
         const val ACTION_RESTART = "top.yukonga.mishka.ROOT_RESTART"
-        const val EXTRA_SUBSCRIPTION_ID = "subscription_id"
         const val EXTRA_SUBMODE = "submode"
         const val EXTRA_ATTACH_ONLY = "attach_only"
 
-        /**
-         * Tile / BootReceiver 等内部入口不知道 submode，按 storage 里的 TUN_MODE
-         * 推导并填入 Intent。外部（ProxyServiceController）则直接显式设置 EXTRA_SUBMODE。
-         */
-        private fun resolveSubmodeFromStorage(context: Context): String {
-            return when (PlatformStorage(context).getString(StorageKeys.TUN_MODE, "vpn")) {
-                "root_tproxy" -> "tproxy"
-                else -> "tun"
-            }
-        }
-
-        fun start(context: Context, subscriptionId: String? = null) {
-            val intent = Intent(context, MishkaRootService::class.java).apply {
-                action = ACTION_START
-                putExtra(EXTRA_SUBMODE, resolveSubmodeFromStorage(context))
-                subscriptionId?.let { putExtra(EXTRA_SUBSCRIPTION_ID, it) }
-            }
-            context.startForegroundService(intent)
-        }
-
-        fun stop(context: Context) {
-            val intent = Intent(context, MishkaRootService::class.java).apply {
-                action = ACTION_STOP
-                putExtra(EXTRA_SUBMODE, resolveSubmodeFromStorage(context))
-            }
-            context.startService(intent)
-        }
+        /** TunMode 对应的 [EXTRA_SUBMODE] 取值；VPN 模式不归本 Service 管，返回 null。 */
+        fun submodeExtra(mode: TunMode): String? =
+            Submode.entries.firstOrNull { it.tunMode == mode }?.storageValue
     }
 }

@@ -6,6 +6,8 @@ import android.net.VpnService
 import androidx.activity.result.ActivityResultLauncher
 import kotlinx.coroutines.flow.StateFlow
 import top.yukonga.mishka.R
+import top.yukonga.mishka.service.MishkaRootService
+import top.yukonga.mishka.service.MishkaTunService
 import java.io.File
 
 enum class ProxyState {
@@ -42,7 +44,7 @@ class ProxyServiceController(private val context: Context) {
     fun start(subscriptionId: String? = null) {
         val id = resolveStartSubscriptionId(subscriptionId) ?: return
         val mode = getTunMode()
-        val intent = buildServiceIntent(mode, "START").apply {
+        val intent = buildServiceIntent(mode, Op.Start).apply {
             putExtra(EXTRA_SUBSCRIPTION_ID, id)
         }
         context.startForegroundService(intent)
@@ -52,7 +54,7 @@ class ProxyServiceController(private val context: Context) {
         val id = resolveStartSubscriptionId(subscriptionId) ?: return
         // 优先读 bridge：代理运行中时它反映实际 Service；否则读 storage（用户最新选择）
         val mode = activeModeOrStored()
-        val intent = buildServiceIntent(mode, "RESTART").apply {
+        val intent = buildServiceIntent(mode, Op.Restart).apply {
             putExtra(EXTRA_SUBSCRIPTION_ID, id)
         }
         context.startService(intent)
@@ -60,7 +62,7 @@ class ProxyServiceController(private val context: Context) {
 
     fun stop() {
         val mode = activeModeOrStored()
-        val intent = buildServiceIntent(mode, "STOP")
+        val intent = buildServiceIntent(mode, Op.Stop)
         context.startService(intent)
     }
 
@@ -76,9 +78,9 @@ class ProxyServiceController(private val context: Context) {
             storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
             return
         }
-        val intent = buildServiceIntent(mode, "START").apply {
+        val intent = buildServiceIntent(mode, Op.Start).apply {
             putExtra(EXTRA_SUBSCRIPTION_ID, id)
-            putExtra("attach_only", true)
+            putExtra(MishkaRootService.EXTRA_ATTACH_ONLY, true)
         }
         context.startForegroundService(intent)
     }
@@ -104,7 +106,7 @@ class ProxyServiceController(private val context: Context) {
             )
         )
         if (wasRunning) {
-            context.startService(buildServiceIntent(mode, "STOP"))
+            context.startService(buildServiceIntent(mode, Op.Stop))
         }
         // 防止 Boot/升级路径在订阅缺失下被 BootReceiver 反复触发
         storage.putString(StorageKeys.SERVICE_WAS_RUNNING, "false")
@@ -143,34 +145,31 @@ class ProxyServiceController(private val context: Context) {
         }
     }
 
+    private enum class Op { Start, Restart, Stop }
+
     /**
      * 组装指向目标 Service 的 Intent。ROOT_TUN / ROOT_TPROXY 共用 MishkaRootService，
      * 通过 EXTRA_SUBMODE 区分内部分支。
+     *
+     * 类与 action / extra 一律取符号而非字面量：重命名时字面量不会编译报错，故障表现是
+     * 「attach-only 静默退化成全新启动」——正好是最不该发生的那件事。
      */
-    private fun buildServiceIntent(mode: TunMode, op: String): Intent {
-        val (className, action, submode) = when (mode) {
-            TunMode.Vpn -> Triple(
-                "top.yukonga.mishka.service.MishkaTunService",
-                "top.yukonga.mishka.$op",
-                null,
-            )
+    private fun buildServiceIntent(mode: TunMode, op: Op): Intent = when (mode) {
+        TunMode.Vpn -> Intent(context, MishkaTunService::class.java).setAction(
+            when (op) {
+                Op.Start -> MishkaTunService.ACTION_START
+                Op.Restart -> MishkaTunService.ACTION_RESTART
+                Op.Stop -> MishkaTunService.ACTION_STOP
+            }
+        )
 
-            TunMode.RootTun -> Triple(
-                "top.yukonga.mishka.service.MishkaRootService",
-                "top.yukonga.mishka.ROOT_$op",
-                "tun",
-            )
-
-            TunMode.RootTproxy -> Triple(
-                "top.yukonga.mishka.service.MishkaRootService",
-                "top.yukonga.mishka.ROOT_$op",
-                "tproxy",
-            )
-        }
-        return Intent().apply {
-            setClassName(context.packageName, className)
-            this.action = action
-            submode?.let { putExtra("submode", it) }
+        TunMode.RootTun, TunMode.RootTproxy -> Intent(context, MishkaRootService::class.java).apply {
+            action = when (op) {
+                Op.Start -> MishkaRootService.ACTION_START
+                Op.Restart -> MishkaRootService.ACTION_RESTART
+                Op.Stop -> MishkaRootService.ACTION_STOP
+            }
+            MishkaRootService.submodeExtra(mode)?.let { putExtra(MishkaRootService.EXTRA_SUBMODE, it) }
         }
     }
 

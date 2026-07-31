@@ -26,6 +26,7 @@ import top.yukonga.mishka.domain.model.resolveExternalController
 import top.yukonga.mishka.domain.model.resolveSecretOrNull
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.ProxyServiceBridge
+import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.platform.ProxyServiceStatus
 import top.yukonga.mishka.platform.ProxyState
 import top.yukonga.mishka.platform.StorageKeys
@@ -91,13 +92,13 @@ class MishkaTunService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                val subscriptionId = intent.getStringExtra(EXTRA_SUBSCRIPTION_ID)
+                val subscriptionId = intent.getStringExtra(ProxyServiceController.EXTRA_SUBSCRIPTION_ID)
                 startProxy(subscriptionId)
             }
 
             ACTION_STOP -> stopProxy()
             ACTION_RESTART -> {
-                val subscriptionId = intent.getStringExtra(EXTRA_SUBSCRIPTION_ID)
+                val subscriptionId = intent.getStringExtra(ProxyServiceController.EXTRA_SUBSCRIPTION_ID)
                 restartProxy(subscriptionId)
             }
         }
@@ -489,7 +490,6 @@ class MishkaTunService : VpnService() {
         const val ACTION_START = "top.yukonga.mishka.START"
         const val ACTION_STOP = "top.yukonga.mishka.STOP"
         const val ACTION_RESTART = "top.yukonga.mishka.RESTART"
-        const val EXTRA_SUBSCRIPTION_ID = "subscription_id"
 
         private const val TUN_SUBNET_PREFIX = 30
         private const val TUN_GATEWAY = "198.18.0.1"
@@ -497,20 +497,5 @@ class MishkaTunService : VpnService() {
         private const val TUN_SUBNET_PREFIX6 = 126
         private const val TUN_DNS = "198.18.0.2"
         private const val TUN_DNS6 = "fdfe:dcba:9876::2"
-
-        fun start(context: Context, subscriptionId: String? = null) {
-            val intent = Intent(context, MishkaTunService::class.java).apply {
-                action = ACTION_START
-                subscriptionId?.let { putExtra(EXTRA_SUBSCRIPTION_ID, it) }
-            }
-            context.startForegroundService(intent)
-        }
-
-        fun stop(context: Context) {
-            val intent = Intent(context, MishkaTunService::class.java).apply {
-                action = ACTION_STOP
-            }
-            context.startService(intent)
-        }
     }
 }
