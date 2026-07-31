@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -14,8 +15,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.mishka.data.api.MihomoConnectionManager
 import top.yukonga.mishka.data.api.RuleLatencyTester
 import top.yukonga.mishka.data.repository.OverrideJsonStore
@@ -33,6 +36,7 @@ import top.yukonga.mishka.platform.TunMode
 import top.yukonga.mishka.platform.showToast
 import top.yukonga.mishka.util.FormatUtils
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /** 低频状态：mihomo 运行状态、配置、代理组、延迟、错误等；改变频率与生命周期事件相当 */
@@ -186,6 +190,9 @@ class HomeViewModel(
     private var uptimeJob: Job? = null
     private var mihomoPid: Int = -1
     private val systemInfo = PlatformSystemInfo()
+
+    /** UI 是否在前台，由 MainActivity 的 onStart/onStop 驱动，门控各轮询循环 */
+    private val uiVisible = MutableStateFlow(true)
 
     // 订阅切换发生在代理 Starting 窗口内时挂起，等状态切到 Running 再重启（见 onActiveSubscriptionChanged）
     private var pendingRestartOnRunning = false
@@ -576,41 +583,50 @@ class HomeViewModel(
         }
     }
 
+    /**
+     * 轮询骨架：UI 不可见时挂在 [uiVisible] 上。这些循环由 viewModelScope 驱动，
+     * 不感知生命周期——不门控就会在后台持续读 /proc、打本地 HTTP。
+     */
+    private fun pollWhileVisible(interval: Duration, block: suspend () -> Unit): Job =
+        viewModelScope.launch {
+            while (true) {
+                uiVisible.first { it }
+                block()
+                delay(interval)
+            }
+        }
+
+    fun setUiVisible(visible: Boolean) {
+        uiVisible.value = visible
+    }
+
     private fun startUptimeCounter() {
         uptimeJob?.cancel()
-        uptimeJob = viewModelScope.launch {
-            while (true) {
-                val elapsed = (Clock.System.now().toEpochMilliseconds() - startTime) / 1000
-                _uptimeState.value = elapsed
-                delay(1000.milliseconds)
-            }
+        uptimeJob = pollWhileVisible(1000.milliseconds) {
+            _uptimeState.value = (Clock.System.now().toEpochMilliseconds() - startTime) / 1000
         }
     }
 
     private fun startSystemInfoCollection() {
         systemInfoJob?.cancel()
-        systemInfoJob = viewModelScope.launch {
-            while (true) {
+        systemInfoJob = pollWhileVisible(2000.milliseconds) {
+            // NetworkInterface 枚举与 /proc/<pid>/stat 都是阻塞调用
+            val snapshot = withContext(Dispatchers.IO) {
                 val networkInfo = systemInfo.getNetworkInfo()
                 val cpu = systemInfo.getCpuUsage(mihomoPid)
-                _systemInfoState.value = SystemInfoSnapshot(
+                SystemInfoSnapshot(
                     localIp = networkInfo.localIp,
                     interfaceName = networkInfo.interfaceName,
                     cpuUsage = if (cpu >= 0) "${cpu.toInt()}%" else "--%",
                 )
-                delay(2000.milliseconds)
             }
+            _systemInfoState.value = snapshot
         }
     }
 
     private fun startRuntimeConfigRefresh() {
         runtimeConfigJob?.cancel()
-        runtimeConfigJob = viewModelScope.launch {
-            while (true) {
-                delay(2000.milliseconds)
-                refreshRuntimeConfig()
-            }
-        }
+        runtimeConfigJob = pollWhileVisible(2000.milliseconds) { refreshRuntimeConfig() }
     }
 
     private suspend fun refreshRuntimeConfig() {

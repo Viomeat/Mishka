@@ -389,6 +389,17 @@ class MainActivity : ComponentActivity() {
         serviceController.verifyAndSyncState()
     }
 
+    // 主页的 /proc 采样与 /configs 轮询挂在 viewModelScope 上，不门控就会在后台一直跑
+    override fun onStart() {
+        super.onStart()
+        homeViewModel.setUiVisible(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        homeViewModel.setUiVisible(false)
+    }
+
     private fun showQrToast(@StringRes resId: Int) {
         Toast.makeText(this, resId, Toast.LENGTH_SHORT).show()
     }
