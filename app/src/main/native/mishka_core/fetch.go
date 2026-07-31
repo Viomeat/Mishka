@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/metacubex/mihomo/common/utils"
@@ -28,6 +30,9 @@ import (
 )
 
 const fetchTimeout = 60 * time.Second
+
+// provider 并发拉取上限，避免十几个源同时打爆远端或本地 mixed-port
+const prefetchConcurrency = 5
 
 // JSON-序列化后跨 JNI 边界回 Kotlin，字段必须与 [data.bridge.CoreFetchProgress] 对齐。
 type FetchProgress struct {
@@ -312,22 +317,45 @@ func prefetchProviders(ctx context.Context, token int32, cfg *config.RawConfig, 
 	})
 
 	total := len(items)
-	for i, it := range items {
-		if ctx.Err() != nil {
-			return
-		}
-		setProgress(token, FetchProgress{
-			Action:      "FetchProviders",
-			Args:        []string{it.key},
-			Progress:    i,
-			MaxProgress: total,
-		})
-		u, err := url.Parse(it.url)
-		if err != nil {
-			continue
-		}
-		_ = fetchProvider(ctx, u, it.dest, userAgent)
+	if total == 0 {
+		return
 	}
+	setProgress(token, FetchProgress{
+		Action:      "FetchProviders",
+		Args:        []string{items[0].key},
+		Progress:    0,
+		MaxProgress: total,
+	})
+
+	// 限流并发：模板订阅十几个 provider 常见，顺序拉取最坏是 N × fetchTimeout。
+	// 每个 provider 仍各自计时，进度按完成数推进
+	var done atomic.Int32
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, prefetchConcurrency)
+	for _, it := range items {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(it item) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if ctx.Err() != nil {
+				return
+			}
+			if u, err := url.Parse(it.url); err == nil {
+				_ = fetchProvider(ctx, u, it.dest, userAgent)
+			}
+			setProgress(token, FetchProgress{
+				Action:      "FetchProviders",
+				Args:        []string{it.key},
+				Progress:    int(done.Add(1)),
+				MaxProgress: total,
+			})
+		}(it)
+	}
+	wg.Wait()
 }
 
 func fetchProvider(ctx context.Context, u *url.URL, dest string, userAgent string) error {
