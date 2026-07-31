@@ -395,6 +395,13 @@ class MainActivity : ComponentActivity() {
         homeViewModel.setUiVisible(true)
     }
 
+    // controller 是 Koin single 随进程存活，不解绑就一直强引用已销毁的 Activity 与整棵
+    // Compose 树；此后再调 requestVpnPermission 还会撞 unregistered launcher 异常
+    override fun onDestroy() {
+        serviceController.setVpnPermissionLauncher(null)
+        super.onDestroy()
+    }
+
     override fun onStop() {
         super.onStop()
         homeViewModel.setUiVisible(false)
