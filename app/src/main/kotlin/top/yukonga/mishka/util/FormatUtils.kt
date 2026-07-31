@@ -1,5 +1,7 @@
 package top.yukonga.mishka.util
 
+import java.util.Locale
+
 object FormatUtils {
 
     fun formatSpeed(bytesPerSecond: Long): String {
@@ -18,7 +20,8 @@ object FormatUtils {
         return if (value == value.toLong().toDouble()) {
             "${value.toLong()} ${units[unitIndex]}"
         } else {
-            "%.1f ${units[unitIndex]}".format(value)
+            // 固定 Locale：默认 Locale 下阿拉伯语等会输出本地数字符号，与 ASCII 单位混排
+            String.format(Locale.US, "%.1f ${units[unitIndex]}", value)
         }
     }
 
