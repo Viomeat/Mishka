@@ -77,13 +77,13 @@ fun SearchStatus.SearchBox(
     if (shouldCollapsed()) content()
 }
 
-/**
- * 顶部间距随顶栏折叠逐帧变化，走 lambda 在测量阶段读取，失效只到布局、不上浮成重组
- */
-private fun Modifier.deferredTopPadding(padding: () -> Dp): Modifier = layout { measurable, constraints ->
-    val pad = padding().roundToPx()
-    val placeable = measurable.measure(constraints.offset(vertical = -pad))
-    layout(placeable.width, placeable.height + pad) { placeable.place(0, pad) }
+/** 在内容上方留出 [inset]，值在布局阶段读——变化只触发重新布局，不重组调用方 */
+private fun Modifier.topInset(inset: () -> Dp): Modifier = layout { measurable, constraints ->
+    val insetPx = inset().roundToPx()
+    val placeable = measurable.measure(constraints.offset(vertical = -insetPx))
+    layout(placeable.width, placeable.height + insetPx) {
+        placeable.placeRelative(0, insetPx)
+    }
 }
 
 /**
@@ -101,7 +101,8 @@ fun SearchStatus.SearchPager(
 ) {
     val searchStatus = this
     val systemBarsPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
-    val topPadding by animateDpAsState(
+    // 展开/收起 300ms 内逐帧变化，只在下方 topInset 的布局阶段读
+    val topPadding = animateDpAsState(
         targetValue = if (searchStatus.shouldExpand()) {
             systemBarsPadding + 5.dp
         } else {
@@ -132,7 +133,7 @@ fun SearchStatus.SearchPager(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(top = topPadding)
+                .topInset { topPadding.value }
                 .then(
                     if (!searchStatus.isCollapsed()) Modifier.background(colorScheme.surface)
                     else Modifier,
@@ -160,7 +161,7 @@ fun SearchStatus.SearchPager(
                     color = colorScheme.primary,
                     modifier = Modifier
                         .padding(start = 4.dp, end = 16.dp, bottom = 6.dp)
-                        .deferredTopPadding(searchBarTopPadding)
+                        .topInset(searchBarTopPadding)
                         .clickable(
                             interactionSource = null,
                             enabled = searchStatus.isExpand(),
@@ -229,7 +230,7 @@ fun SearchBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
             .padding(bottom = 6.dp)
-            .deferredTopPadding(searchBarTopPadding)
+            .topInset(searchBarTopPadding)
             .heightIn(min = 45.dp)
             .background(colorScheme.surfaceContainerHigh, CircleShape)
             .focusRequester(focusRequester),
@@ -307,7 +308,7 @@ fun SearchBarFake(
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
             .padding(bottom = 6.dp)
-            .deferredTopPadding(searchBarTopPadding),
+            .topInset(searchBarTopPadding),
         onSearch = { },
         enabled = false,
         expanded = false,

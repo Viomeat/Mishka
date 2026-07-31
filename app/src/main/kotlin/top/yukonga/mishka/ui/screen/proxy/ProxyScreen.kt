@@ -46,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
@@ -504,9 +503,11 @@ private fun ProxyGroupHeader(
     onTestDelay: () -> Unit,
     onToggle: () -> Unit,
 ) {
-    val rotation by animateFloatAsState(
+    // 保持 State：解包后喂给 Modifier.rotate 会让整个组头在 300ms 内逐帧重组
+    val rotation = animateFloatAsState(
         targetValue = if (isExpanded) 90f else 0f,
         animationSpec = tween(300),
+        label = "groupHeaderArrow",
     )
 
     Row(
@@ -592,8 +593,8 @@ private fun ProxyGroupHeader(
                 .size(width = 10.dp, height = 16.dp)
                 .graphicsLayer {
                     scaleX = if (layoutDirection == LayoutDirection.Rtl) -1f else 1f
-                }
-                .rotate(rotation),
+                    rotationZ = rotation.value
+                },
             colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onSurfaceVariantSummary),
         )
     }
