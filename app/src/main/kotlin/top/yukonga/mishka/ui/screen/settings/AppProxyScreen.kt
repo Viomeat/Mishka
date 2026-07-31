@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,7 +47,10 @@ import top.yukonga.mishka.ui.component.ListPopupDefaults.MenuPositionProvider
 import top.yukonga.mishka.ui.component.SearchBarFake
 import top.yukonga.mishka.ui.component.SearchBox
 import top.yukonga.mishka.ui.component.SearchPager
+import top.yukonga.mishka.ui.component.SearchResultStatusEffect
 import top.yukonga.mishka.ui.component.SearchStatus
+import top.yukonga.mishka.ui.component.rememberSearchBarTopPadding
+import top.yukonga.mishka.ui.component.rememberSearchScreenStatus
 import top.yukonga.mishka.ui.component.blur.BlurredBar
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
 import top.yukonga.mishka.ui.platform.AppIcon
@@ -56,7 +58,6 @@ import top.yukonga.mishka.ui.platform.getPlainText
 import top.yukonga.mishka.ui.platform.setPlainText
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
 import top.yukonga.mishka.ui.util.rememberContentReady
-import top.yukonga.mishka.ui.util.rememberIsWideScreen
 import top.yukonga.mishka.viewmodel.AppProxyMode
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -96,16 +97,9 @@ fun AppProxyScreen(
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
 
-    val searchLabel = stringResource(R.string.app_proxy_search)
     val appliedMsg = stringResource(R.string.app_proxy_applied)
-    var searchStatus by remember { mutableStateOf(SearchStatus(label = searchLabel)) }
-
-    // 语言变更时同步 label
-    LaunchedEffect(searchLabel) {
-        if (searchStatus.label != searchLabel) {
-            searchStatus = searchStatus.copy(label = searchLabel)
-        }
-    }
+    val searchStatusState = rememberSearchScreenStatus(stringResource(R.string.app_proxy_search))
+    var searchStatus by searchStatusState
 
     // 搜索过滤（直接传入 searchText，避免组合期间写入 ViewModel 状态）
     val searchText = searchStatus.searchText
@@ -117,33 +111,9 @@ fun AppProxyScreen(
 
     // 使用 ViewModel 缓存的 filteredAppsFlow（不依赖 selectedPackages，勾选不引起排序重算）
     val filteredApps by viewModel.filteredAppsFlow.collectAsStateWithLifecycle()
+    SearchResultStatusEffect(searchStatusState, filteredApps.isEmpty())
 
-    // 更新搜索结果状态
-    val resultStatus by remember(searchText, filteredApps) {
-        derivedStateOf {
-            when {
-                searchText.isEmpty() -> SearchStatus.ResultStatus.DEFAULT
-                filteredApps.isEmpty() -> SearchStatus.ResultStatus.EMPTY
-                else -> SearchStatus.ResultStatus.SHOW
-            }
-        }
-    }
-    LaunchedEffect(resultStatus) {
-        if (searchStatus.resultStatus != resultStatus) {
-            searchStatus = searchStatus.copy(resultStatus = resultStatus)
-        }
-    }
-
-    // 宽屏用固定的 SmallTopAppBar（永不折叠），搜索框顶部间距恒为 0；仅手机可折叠大标题栏才随折叠动态收缩。
-    // collapsedFraction 是帧率级 State，走 lambda 由消费方在布局阶段读，组合期读会让顶栏每帧重组
-    val isWideScreen = rememberIsWideScreen()
-    val dynamicTopPadding: () -> Dp = remember(isWideScreen, scrollBehavior) {
-        if (isWideScreen) {
-            { 0.dp }
-        } else {
-            { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
-        }
-    }
+    val dynamicTopPadding = rememberSearchBarTopPadding(scrollBehavior)
 
     val backdrop = rememberBlurBackdrop()
     val blurActive = backdrop != null

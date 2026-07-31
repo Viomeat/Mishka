@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,11 +58,13 @@ import top.yukonga.mishka.ui.component.AdaptiveTopAppBar
 import top.yukonga.mishka.ui.component.SearchBarFake
 import top.yukonga.mishka.ui.component.SearchBox
 import top.yukonga.mishka.ui.component.SearchPager
+import top.yukonga.mishka.ui.component.SearchResultStatusEffect
 import top.yukonga.mishka.ui.component.SearchStatus
+import top.yukonga.mishka.ui.component.rememberSearchBarTopPadding
+import top.yukonga.mishka.ui.component.rememberSearchScreenStatus
 import top.yukonga.mishka.ui.component.blur.BlurredBar
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
-import top.yukonga.mishka.ui.util.rememberIsWideScreen
 import top.yukonga.mishka.util.FormatUtils
 import top.yukonga.mishka.viewmodel.ConnectionViewModel
 import top.yukonga.miuix.kmp.basic.Card
@@ -101,49 +102,17 @@ fun ConnectionScreen(
         onDispose { viewModel.stopObserving() }
     }
 
-    val searchLabel = stringResource(R.string.connection_search)
-    var searchStatus by remember { mutableStateOf(SearchStatus(label = searchLabel)) }
-
-    // 语言变更时同步 label
-    LaunchedEffect(searchLabel) {
-        if (searchStatus.label != searchLabel) {
-            searchStatus = searchStatus.copy(label = searchLabel)
-        }
-    }
+    val searchStatusState = rememberSearchScreenStatus(stringResource(R.string.connection_search))
+    var searchStatus by searchStatusState
 
     // 搜索过滤（直接传入 searchText，避免组合期间写入 ViewModel 状态）
     val searchText = searchStatus.searchText
-
     val filteredConnections = remember(searchText, uiState.connections) {
         viewModel.filteredConnections(searchText)
     }
+    SearchResultStatusEffect(searchStatusState, filteredConnections.isEmpty())
 
-    // 更新搜索结果状态
-    val resultStatus by remember(searchText, filteredConnections) {
-        derivedStateOf {
-            when {
-                searchText.isEmpty() -> SearchStatus.ResultStatus.DEFAULT
-                filteredConnections.isEmpty() -> SearchStatus.ResultStatus.EMPTY
-                else -> SearchStatus.ResultStatus.SHOW
-            }
-        }
-    }
-    LaunchedEffect(resultStatus) {
-        if (searchStatus.resultStatus != resultStatus) {
-            searchStatus = searchStatus.copy(resultStatus = resultStatus)
-        }
-    }
-
-    // 宽屏用固定的 SmallTopAppBar（永不折叠），搜索框顶部间距恒为 0；仅手机可折叠大标题栏才随折叠动态收缩。
-    // collapsedFraction 是帧率级 State，走 lambda 由消费方在布局阶段读，组合期读会让顶栏每帧重组
-    val isWideScreen = rememberIsWideScreen()
-    val dynamicTopPadding: () -> Dp = remember(isWideScreen, scrollBehavior) {
-        if (isWideScreen) {
-            { 0.dp }
-        } else {
-            { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
-        }
-    }
+    val dynamicTopPadding = rememberSearchBarTopPadding(scrollBehavior)
 
     val backdrop = rememberBlurBackdrop()
     val blurActive = backdrop != null
