@@ -191,6 +191,10 @@ val downloadGeoFiles = tasks.register<DownloadGeoFilesTask>("downloadGeoFiles") 
         )
     )
     outputDir.set(layout.projectDirectory.dir("src/main/assets"))
+    // 上游 `latest` tag 是原地重发布的：URL 不变、本地文件也没被别人动过，Gradle 的
+    // up-to-date 判定会一直跳过，本地永远停在第一次抓到的那份数据上。任务只在被显式
+    // 调用时才跑（没有任何任务依赖它），「调了就去取最新」正是它该有的语义
+    outputs.upToDateWhen { false }
 }
 
 // outputDir 既是本任务的 @OutputDirectory 又是 mergeAssets 的输入源。两者同时出现在一次
