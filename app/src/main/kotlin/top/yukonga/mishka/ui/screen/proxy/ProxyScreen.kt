@@ -853,8 +853,7 @@ private fun ProxyNodeCard(
     }
 }
 
-// 节点排序：sortOption 编码 = sortKeyIndex * 2 + (if reverse 1 else 0)
-// 0/1=默认 升/降，2/3=名称 升/降，4/5=延迟 升/降
+// 节点排序。sortOption 的编码见 ProxyViewModel._sortOption。
 // 延迟排序时超时 (-1) 与未测 (null) 永远沉底，倒序也只翻转已测部分
 private fun sortNodes(
     names: List<String>,

@@ -129,7 +129,7 @@ private fun SubscriptionCard(
     val info = state.subscription
     val total = info?.Total?.coerceAtLeast(0) ?: 0
     val used = info?.let { (it.Upload + it.Download).coerceAtLeast(0) } ?: 0
-    // total<=0（不限量套餐或 header 缺 total 字段）时配额语义不成立，不画用量水印、badge 退回 "SUB"
+    // total<=0 的语义见 HomeViewModel.activeSubscriptionInfo：不画用量水印、badge 退回 "SUB"
     val hasQuota = total > 0
     val progress = if (hasQuota) (used.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
 

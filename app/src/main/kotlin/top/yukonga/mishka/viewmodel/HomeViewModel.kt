@@ -463,7 +463,10 @@ class HomeViewModel(
 
     /**
      * 当前活跃订阅的视图流量信息。Repository 已合并 mihomo runtime live data 到 active
-     * Subscription，本函数只做 model 转换；total<=0 返回 null 让 UI 显示 "--"。
+     * Subscription，本函数只做 model 转换。
+     *
+     * `total<=0`（不限量套餐，或 header 根本没给 total）时配额语义不成立：这里返回 null，
+     * UI 侧据此退回 "--"、不画用量水印。各卡片的处理都以本注释为准，别再各写一份。
      */
     private fun activeSubscriptionInfo(): SubscriptionInfo? {
         val sub = activeSubscription.value ?: return null

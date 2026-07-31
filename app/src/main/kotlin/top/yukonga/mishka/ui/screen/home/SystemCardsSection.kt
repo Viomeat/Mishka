@@ -247,7 +247,7 @@ private fun ProviderTrafficCard(provider: ProviderTrafficInfo) {
     val total = provider.total.coerceAtLeast(0)
     val used = if (Long.MAX_VALUE - upload < download) Long.MAX_VALUE else upload + download
     val remaining = (total - used).coerceAtLeast(0)
-    // total<=0（不限量套餐或 header 缺 total 字段）时配额语义不成立，剩余/总量/进度显示 "--"
+    // total<=0 的语义见 HomeViewModel.activeSubscriptionInfo：剩余/总量/进度显示 "--"
     val hasQuota = total > 0
     val progress = if (hasQuota) {
         (used.toFloat() / total.toFloat()).coerceIn(0f, 1f)

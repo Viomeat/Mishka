@@ -62,8 +62,7 @@ class ProviderViewModel : ViewModel() {
 
     private var repository: MihomoRepository? = null
 
-    // mihomo 重启切 client 时取消旧的 loadProviders 协程，防止旧 client 的 HTTP 响应已读完
-    // 但 UI 写回晚于新 client 的写入，把刚切走的旧订阅 provider 列表覆盖回来
+    // 切 client 时必须取消，理由见 ProxyViewModel.loadJob
     private var loadJob: Job? = null
     private var refreshJob: Job? = null
 
