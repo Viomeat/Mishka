@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 import top.yukonga.mishka.R
 import top.yukonga.mishka.data.database.getAppDatabase
 import top.yukonga.mishka.data.repository.OverrideJsonStore
@@ -33,6 +34,9 @@ class ProfileWorker : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentLinkedQueue<Job>()
+
+    // 与 UI 侧共享同一 store：内存值是权威值，自建实例读不到刚落的设置
+    private val overrideStore: OverrideJsonStore by inject()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -100,7 +104,6 @@ class ProfileWorker : Service() {
             fileManager = fileManager,
             scope = scope,
         )
-        val overrideStore = OverrideJsonStore(fileManager)
         val proxyResolver = SubscriptionProxyResolver(storage, overrideStore)
         val processor = ProfileProcessor(repo, fileManager, proxyResolver)
 

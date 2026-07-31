@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koin.android.ext.android.inject
 import top.yukonga.mishka.MishkaApplication
 import top.yukonga.mishka.R
 import top.yukonga.mishka.data.database.getAppDatabase
@@ -60,7 +61,8 @@ class MishkaRootService : Service() {
     private val dynamicNotification by lazy {
         DynamicNotificationManager(this, scope, MishkaApplication.instance.connectionManager)
     }
-    private val overrideStore by lazy { OverrideJsonStore(AndroidProfileFileManager(this)) }
+    // 取 Koin 单例而非自建：store 的内存值是权威值，自建实例读不到 UI 侧刚落的设置
+    private val overrideStore: OverrideJsonStore by inject()
     private var monitorJob: Job? = null
     private var notificationRefreshJob: Job? = null
 

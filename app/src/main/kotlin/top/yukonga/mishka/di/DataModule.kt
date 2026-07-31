@@ -25,7 +25,7 @@ val dataModule = module {
     single { get<AppDatabase>().pendingDao() }
     single { get<AppDatabase>().selectionDao() }
 
-    single { OverrideJsonStore(get()) }
+    single { OverrideJsonStore(get(), get()) }
     single { SubscriptionProxyResolver(get(), get()) }
     single { RuleLatencyTester(get()) }
     single { MihomoConnectionManager(get()) }
