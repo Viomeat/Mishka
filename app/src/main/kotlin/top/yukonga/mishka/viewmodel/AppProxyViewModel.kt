@@ -122,12 +122,12 @@ class AppProxyViewModel(
     fun toggleApp(packageName: String) {
         val current = _uiState.value.selectedPackages
         applySelection(
-            if (packageName in current) current.remove(packageName) else current.add(packageName)
+            if (packageName in current) current.removing(packageName) else current.adding(packageName)
         )
     }
 
     fun selectAll() {
-        applySelection(_uiState.value.selectedPackages.addAll(visiblePackages()))
+        applySelection(_uiState.value.selectedPackages.addingAll(visiblePackages()))
     }
 
     fun deselectAll() {
@@ -138,7 +138,7 @@ class AppProxyViewModel(
         val current = _uiState.value.selectedPackages
         val visible = visiblePackages()
         // 保留不可见的已选项，对可见项取反
-        applySelection(current.removeAll(visible).addAll(visible - current))
+        applySelection(current.removingAll(visible).addingAll(visible - current))
     }
 
     private fun visiblePackages(): Set<String> = filteredApps().mapTo(mutableSetOf()) { it.packageName }
