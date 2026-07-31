@@ -1,10 +1,13 @@
 package top.yukonga.mishka.data.repository
 
+import android.util.Log
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,16 +90,28 @@ class SubscriptionRepositoryImpl(
 
     init {
         scope.launch {
-            combine(importedDao.getAllFlow(), _activeUuid, _liveProvider) { entities, activeId, live ->
-                // pending 一次取回建表：逐条 queryByUUID 会让任意 imported 写入 / active 切换 /
-                // live 推送都放大成 N 次查询
-                val pendingMap = pendingDao.queryAll().associateBy { it.uuid }
-                entities.map { resolveProfile(it, pendingMap[it.uuid], activeId, live) }
-                    .toPersistentList()
-                // 目录 mtime 是阻塞 stat，appScope 跑在 Default
-            }.flowOn(Dispatchers.IO).collect { subs ->
-                _subscriptions.value = subs
+            // combine 体内有 DAO 查询与目录 stat，抛出去这条流就永久终结、订阅列表停更。
+            // `.catch` 是终结型的救不了，只能整体重订阅
+            while (isActive) {
+                runCatching { collectProfiles() }.onFailure { e ->
+                    if (e is CancellationException) throw e
+                    Log.e(TAG, "subscription stream failed, resubscribing", e)
+                    delay(RESUBSCRIBE_DELAY_MS)
+                }
             }
+        }
+    }
+
+    private suspend fun collectProfiles() {
+        combine(importedDao.getAllFlow(), _activeUuid, _liveProvider) { entities, activeId, live ->
+            // pending 一次取回建表：逐条 queryByUUID 会让任意 imported 写入 / active 切换 /
+            // live 推送都放大成 N 次查询
+            val pendingMap = pendingDao.queryAll().associateBy { it.uuid }
+            entities.map { resolveProfile(it, pendingMap[it.uuid], activeId, live) }
+                .toPersistentList()
+            // 目录 mtime 是阻塞 stat，appScope 跑在 Default
+        }.flowOn(Dispatchers.IO).collect { subs ->
+            _subscriptions.value = subs
         }
     }
 
@@ -364,9 +380,12 @@ class SubscriptionRepositoryImpl(
         activeId: String,
         live: LiveProviderSnapshot?,
     ): Subscription {
-        // 优先级：编辑中的 Pending > 运行中的 live provider 聚合 > DB ImportedEntity。
-        // 模板订阅（顶层 URL 无 subscription-userinfo header）的 DB 流量为 0，但 yaml 内
-        // proxy-provider 的真实流量在 mihomo runtime 里——本合并让订阅页和主页看到一致数据
+        // 用户可编辑字段优先级：编辑中的 Pending > DB ImportedEntity。
+        //
+        // **流量四项跳过 pending 层**：pending 的这些字段在所有写入路径上都是 0（create 用默认值、
+        // patch 显式清零），叠进优先级就会让「只要有草稿，已用/总量/到期全变 0」——编辑订阅后
+        // fetch 失败留下残留 pending 即触发。它们只有 live > imported 两层：模板订阅（顶层 URL 无
+        // subscription-userinfo header）DB 流量为 0，真实流量在 mihomo runtime 的 proxy-provider 里
         val liveInfo = live?.takeIf { it.subscriptionId == imported.uuid }?.info
         return Subscription(
             id = imported.uuid,
@@ -377,9 +396,9 @@ class SubscriptionRepositoryImpl(
             ageSecretKey = pending?.ageSecretKey ?: imported.ageSecretKey,
             interval = pending?.interval ?: imported.interval,
             upload = pending?.upload ?: liveInfo?.Upload ?: imported.upload,
-            download = pending?.download ?: liveInfo?.Download ?: imported.download,
-            total = pending?.total ?: liveInfo?.Total ?: imported.total,
-            expire = pending?.expire ?: liveInfo?.Expire ?: imported.expire,
+            download = liveInfo?.Download ?: imported.download,
+            total = liveInfo?.Total ?: imported.total,
+            expire = liveInfo?.Expire ?: imported.expire,
             // 无草稿就不去 stat pending/ —— 该目录只随 pending 行一同创建
             updatedAt = (if (pending != null) fileManager?.getDirectoryLastModified(imported.uuid, pending = true) else null)
                 ?: fileManager?.getDirectoryLastModified(imported.uuid, pending = false)
@@ -388,6 +407,11 @@ class SubscriptionRepositoryImpl(
             imported = true,
             pending = pending != null,
         )
+    }
+
+    private companion object {
+        const val TAG = "SubscriptionRepository"
+        const val RESUBSCRIBE_DELAY_MS = 1000L
     }
 }
 
