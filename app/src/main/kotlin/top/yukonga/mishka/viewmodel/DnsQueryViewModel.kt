@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,9 +31,19 @@ class DnsQueryViewModel : ViewModel() {
     val uiState: StateFlow<DnsQueryUiState> = _uiState.asStateFlow()
 
     private var repository: MihomoRepository? = null
+    private var queryJob: Job? = null
 
+    /**
+     * mihomo 重启 / 切订阅时 manager 会 close 旧 client 并 emit 新 repo。in-flight 请求会因
+     * client 关闭而抛异常，但协程本身不会被取消——不 cancel 就会拿旧连接的结果（或它的失败
+     * 文案）覆盖新连接的 UI，并把 isQuerying 卡在 true。
+     */
     fun setRepository(repo: MihomoRepository?) {
+        if (repository === repo) return
+        queryJob?.cancel()
+        queryJob = null
         repository = repo
+        _uiState.value = _uiState.value.copy(isQuerying = false)
     }
 
     fun setQueryName(name: String) {
@@ -50,8 +61,11 @@ class DnsQueryViewModel : ViewModel() {
 
         _uiState.value = state.copy(isQuerying = true, error = "", answers = persistentListOf(), status = null)
 
-        viewModelScope.launch {
-            repo.queryDns(state.queryName, state.queryType)
+        queryJob = viewModelScope.launch {
+            val result = repo.queryDns(state.queryName, state.queryType)
+            // 协程被 cancel 后 HTTP 响应仍可能已读完，二次校验 repo identity 再写 UI
+            if (repository !== repo) return@launch
+            result
                 .onSuccess { response ->
                     _uiState.value = _uiState.value.copy(
                         answers = response.Answer.toPersistentList(),
