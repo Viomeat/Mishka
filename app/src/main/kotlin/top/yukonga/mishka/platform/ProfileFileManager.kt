@@ -32,8 +32,11 @@ interface ProfileFileManager {
     /** 读 mihomo workDir 下的文件（如 override.user.json），文件不存在返回 null。 */
     fun readMihomoFile(relativePath: String): String?
 
-    /** 写 mihomo workDir 下的文件（覆盖写入）。 */
+    /** 写 mihomo workDir 下的文件（原子覆盖：temp + rename）。 */
     fun writeMihomoFile(relativePath: String, content: String)
+
+    /** 把文件改名为 `<name>.bak`（覆盖旧备份）。用于保住解析失败的原文。 */
+    fun backupMihomoFile(relativePath: String)
 
     // === imported 目录操作 ===
     fun getImportedDir(uuid: String): String

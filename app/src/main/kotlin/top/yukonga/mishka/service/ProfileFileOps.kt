@@ -2,6 +2,7 @@ package top.yukonga.mishka.service
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 
 /**
@@ -87,6 +88,24 @@ object ProfileFileOps {
             pending.copyRecursively(processing, overwrite = true)
         }
         return processing
+    }
+
+    /**
+     * 原子覆盖写。`writeText` 是先截断再写，中途掉电会留下半个文件——对 override.user.json
+     * 这类配置，解析失败等同于用户设置全丢。同目录 rename 在 ext4/f2fs 上原子，
+     * rename 前 fsync 保证内容先于目录项落盘。
+     */
+    fun writeAtomically(target: File, content: String) {
+        target.parentFile?.mkdirs()
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        FileOutputStream(tmp).use { out ->
+            out.write(content.toByteArray())
+            out.fd.sync()
+        }
+        if (!tmp.renameTo(target)) {
+            tmp.delete()
+            throw IOException("rename ${tmp.name} -> ${target.name} failed")
+        }
     }
 
     fun writeProcessingConfig(workDir: String, content: String): File {

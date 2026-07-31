@@ -70,8 +70,13 @@ class OverrideJsonStore(
         val text = fileManager.readMihomoFile(FILE_NAME) ?: return ConfigurationOverride()
         if (text.isBlank()) return ConfigurationOverride()
         return runCatching { json.decodeFromString<ConfigurationOverride>(text) }
-            .onFailure { Log.e(TAG, "failed to parse $FILE_NAME, falling back to defaults", it) }
-            .getOrDefault(ConfigurationOverride())
+            .getOrElse { e ->
+                // 直接退回默认值会让下一次写盘把空配置持久化，用户 override 就此永久消失。
+                // 原文挪到 .bak 保住，本次以默认值继续——拒绝写入只会让设置页静默失灵
+                Log.e(TAG, "failed to parse $FILE_NAME, backing up to $FILE_NAME.bak", e)
+                fileManager.backupMihomoFile(FILE_NAME)
+                ConfigurationOverride()
+            }
     }
 
     companion object {

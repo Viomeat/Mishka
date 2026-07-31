@@ -38,9 +38,15 @@ class AndroidProfileFileManager(private val context: Context) : ProfileFileManag
     }
 
     override fun writeMihomoFile(relativePath: String, content: String) {
+        ProfileFileOps.writeAtomically(File(ConfigGenerator.getWorkDir(context), relativePath), content)
+    }
+
+    override fun backupMihomoFile(relativePath: String) {
         val file = File(ConfigGenerator.getWorkDir(context), relativePath)
-        file.parentFile?.mkdirs()
-        file.writeText(content)
+        if (!file.exists()) return
+        val backup = File(file.parentFile, "${file.name}.bak")
+        backup.delete()
+        file.renameTo(backup)
     }
 
     override fun getImportedDir(uuid: String): String {

@@ -107,8 +107,9 @@ object RuntimeOverrideBuilder {
             tun = buildTunOverride(context, tunMode, tunFd, userOverride.tun),
             profile = ProfileOverride(storeSelected = false, storeFakeIp = true),
         )
+        // 原子写：mihomo 紧接着就以 --override-json 读它，半个 JSON 会让启动失败且难以定位
         val file = File(ConfigGenerator.getWorkDir(context), FILE_NAME)
-        file.writeText(json.encodeToString(merged))
+        ProfileFileOps.writeAtomically(file, json.encodeToString(merged))
         return file
     }
 
