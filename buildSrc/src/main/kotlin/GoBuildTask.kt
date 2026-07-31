@@ -1,10 +1,12 @@
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -24,6 +26,17 @@ abstract class GoBuildTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val goSourceDir: DirectoryProperty
+
+    /**
+     * go.mod `replace` 指向的模块源码树（本仓是 mihomo submodule）。
+     *
+     * **必须声明**：`go build` 编译的绝大部分代码在 [goSourceDir] 之外，不作为输入就会让
+     * rebase / 改 patch 后任务判 UP-TO-DATE，静默产出陈旧 .so——现象与「patch 根本没生效」
+     * 完全一致，无法区分。宁可多收也不能漏：多收只是多重建一次，漏收是发不出信号的错误。
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val replacedModuleSources: ConfigurableFileCollection
 
     @get:Input
     abstract val abi: Property<String>

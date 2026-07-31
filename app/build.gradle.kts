@@ -177,6 +177,13 @@ val buildMihomoTasks = supportedAbis.map { abi ->
         group = "mihomo"
         description = "Build unified mihomo + JNI c-shared library (libmihomo.so) for $abi"
         goSourceDir.set(mishkaCoreSourceDir)
+        // mihomo 经 go.mod replace 引入，绝大部分被编译的代码在这里。反向过滤（全收再排除）
+        // 而非按扩展名列举：component/ca 有 go:embed 嵌 .crt，白名单漏一种后缀就是同一个坑
+        replacedModuleSources.from(
+            mihomoSubmoduleDir.asFileTree.matching {
+                exclude(".git", ".github/**", "docs/**", "test/**", "**/*_test.go")
+            }
+        )
         this.abi.set(abi)
         versionName.set(mihomoVersion)
         buildTags.set(mihomoBuildTags)

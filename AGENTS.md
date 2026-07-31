@@ -118,7 +118,7 @@ DELETE → 三表清理 + imported/{uuid}/ + pending/{uuid}/ 删除
 
 mihomo 经 submodule 引入 Mishka fork（branch `Mishka`）。Gradle 按 ABI 驱动 Go 构建（当前仅 arm64-v8a），产物落 `app/src/main/jniLibs/<ABI>/`；`assemble` 自动触发 buildMihomo / CMake，`downloadGeoFiles` 需手动或 CI 跑一次。刷新 Baseline Profile：`./gradlew :app:generateReleaseBaselineProfile`（需 adb 连 arm64 真机，产物提交进仓库）。
 
-[GoBuildTask](buildSrc/src/main/kotlin/GoBuildTask.kt) 产 `libmihomo.so`（CGO_ENABLED=1，需 NDK clang，从 `androidComponents.sdkComponents.ndkDirectory` 读）。CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED + IMPORTED_SONAME）：`libmihomo_runner.so`（PIE wrapper）与 `libmishka_jni.so`（薄 JNI 桥）。
+[GoBuildTask](buildSrc/src/main/kotlin/GoBuildTask.kt) 产 `libmihomo.so`（CGO_ENABLED=1，需 NDK clang，从 `androidComponents.sdkComponents.ndkDirectory` 读）。**mihomo submodule 必须整棵声明进 `replacedModuleSources`**——它经 go.mod `replace` 引入，被编译的代码绝大部分在那里而不在 `goSourceDir`；漏声明会让 rebase / 改 patch 后任务判 UP-TO-DATE、`go build` 根本不执行，静默产出陈旧 .so，现象与「patch 没生效」无法区分（`mihomo.version` 是 gradle.properties 里的手写字面量，指望它兜底就是指望每次都记得手改）。过滤用**反向排除**而非扩展名白名单：`component/ca` 有 `go:embed` 嵌 `.crt`，白名单漏一种后缀就是同一个坑；宁可多收（多重建一次）也不能漏（错误发不出信号）。CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED + IMPORTED_SONAME）：`libmihomo_runner.so`（PIE wrapper）与 `libmishka_jni.so`（薄 JNI 桥）。
 
 ## 关键架构约束
 
@@ -190,7 +190,7 @@ mihomo 经 submodule 引入 Mishka fork（branch `Mishka`）。Gradle 按 ABI �
 
 **TUN init silent failure 兜底**：mihomo `ReCreateTun` 失败仅 log 不退出。① `MishkaTunService` 清 O_CLOEXEC 失败必须视为致命（`closeTunFd` + Error + `stopSelf`）；② `MihomoRunner.waitForReady` 在 API ready 后 delay 500ms 扫日志匹配 `Start TUN listening error` / `configure tun interface` / `create NetworkUpdateMonitor`。
 
-**fd 模式 forwarderBindInterface 必须为 true**：upstream `e38aa82a` 在 Mishka VPN（gvisor stack + VpnService fd）下实测破坏 fd 路径流量——延迟测试通（mihomo 直接 dial 不经 fd），实际经 fd 流量不通。静态搜索 sing-tun 0.4.18 仅 `stack_system` 读该标志、gvisor 不读，但实测推翻该结论。fork 第 5 patch 保留 fd 模式下的旧行为；每次 rebase 上游必须验证 `listener/sing_tun/server.go` 的 `forwarderBindInterface = true` 仍 active。
+**fd 模式 forwarderBindInterface 必须为 true**：upstream `e38aa82a` 在 Mishka VPN（gvisor stack + VpnService fd）下实测破坏 fd 路径流量——延迟测试通（mihomo 直接 dial 不经 fd），实际经 fd 流量不通。静态搜索 sing-tun 0.4.18 仅 `stack_system` 读该标志、gvisor 不读，但实测推翻该结论。fork 第 5 patch 保留 fd 模式下的旧行为；每次 rebase 上游必须验证 `listener/sing_tun/server.go` 的 `forwarderBindInterface = true` 仍 active——**验证的前提是新代码真进了 .so**，见上文 `replacedModuleSources`。
 
 **VPN MTU 同步**：`VpnService.Builder.setMtu` 与 mihomo `cfg.Tun.MTU` 必须同值。sing-tun 在 fd 模式给 gvisor `fdbased.New` 用 `cfg.Tun.MTU` 设 endpoint 缓冲，0 时所有 read 失败 → 表象「延迟正常但流量不通」。两侧共用 `RuntimeOverrideBuilder.VPN_TUN_MTU` 常量，禁止任一边 hardcode。
 
