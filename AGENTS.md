@@ -62,7 +62,7 @@ MishkaApplication.startKoin ─ Koin（dataModule + androidPlatformModule + andr
 - **统一 .so**：libmihomo.so（cgo c-shared，~56MB）同时承担 JNI 导出 + `mihomoEntry(argc, argv)` runtime 入口；libmihomo_runner.so（C PIE，~6KB）由 MihomoRunner fork+exec 后 dlopen 它调 mihomoEntry。一份 mihomo 代码两条路径共用。
 - **mihomo 客户端共享**：`MihomoConnectionManager`（`dataModule` single）订阅 `ProxyServiceBridge.state`，Running 时造新 `MihomoRepositoryImpl`、其他状态置 null，切换前同步 close 旧实例。消费方一律经 `connectionManager.repository: StateFlow<MihomoRepository?>`：HomeViewModel 自行 collect；MainActivity collect 后 `setRepository` 转发给 Proxy/Log/Provider/Connection/DnsQuery 五个 VM；`DynamicNotificationManager` 直接 collect。
 - **MishkaCoreBridge**：`init(homeDir, userAgent)` 在 `MishkaApplication.onCreate` 一次性调用，homeDir 指向共享 GeoIP 目录 `files/mihomo/geodata/`；`fetchAndValid` 内部分 token、150ms 轮询进度、取消时调 `nativeCancel` 让 Go ctx 进入 Done。
-- **导航**：miuix NavDisplay + 自定义 Navigator（push/pop/popUntil + navigateForResult）+ LocalNavigator；back stack 经 Route sealed 多态序列化持久化（`NavBackStackSaver`），新增路由只需 `@Serializable` 即获得进程死亡恢复；**`sealed interface Route` 自身必须保留 `@Serializable`**——缺失编译通过但运行时 `SerializationException`。
+- **导航**：miuix NavDisplay + 自定义 Navigator（push/replace/pop/popUntil）+ LocalNavigator；back stack 经 Route sealed 多态序列化持久化（`NavBackStackSaver`），新增路由只需 `@Serializable` 即获得进程死亡恢复；**`sealed interface Route` 自身必须保留 `@Serializable`**——缺失编译通过但运行时 `SerializationException`。
 - **深色判定单点**：`ThemeConfig.resolveIsDark(systemDark)` 是 colorMode→isDark 的唯一实现，组合树内一律读 `LocalAppDarkMode.current`；**屏幕/组件禁止直接 `isSystemInDarkTheme()`**，否则用户强制深/浅色时该处不跟随（AboutScreen OS3 背景 / YAML 编辑器配色曾因此混色）。主题枚举的用户可见名走 [ThemeLabels.kt](app/src/main/kotlin/top/yukonga/mishka/ui/theme/ThemeLabels.kt) 共享 `label()`，禁止各自 when 映射。`LocalAppMonetEnabled` 标记 Monet：StatusColors 仅 Running 态跟随动态取色，Pending/Stopped 警示黄/红固定。底栏毛玻璃无独立开关，跟随全局 `blurEnabled`。
 - **隧道三模式**（`TunMode { Vpn, RootTun, RootTproxy }`）：
   - **VPN**：VpnService 创建 TUN fd，mihomo 写 `tun.file-descriptor` + `auto-route=false`，工作目录 `imported/{uuid}/`（app UID）。
@@ -88,7 +88,7 @@ MishkaApplication.startKoin ─ Koin（dataModule + androidPlatformModule + andr
   - **排除项**：geodata 符号链接与实体拷贝不进备份（名单 + isSymbolicLink 双重排除，否则 readBytes 追链接把几十 MB 实体化进 zip）；prefs 黑名单排除设备/运行时态与 WebDAV 凭据自身。
   - **恢复后强制重启进程**（内存热状态不随磁盘刷新）。开机自启是 PackageManager 组件位而非 pref，走快照独立字段；Wi-Fi 策略组件位与监控服务由重启后 MainActivity 按 `WIFI_POLICY_ENABLED` 幂等 reconcile。
   - **本地备份**复用同一 zip 与恢复管线：SAF `CreateDocument`（`"wt"` 截断写防旧文档尾部残留）+ `OpenDocument`（不按 MIME 过滤——网盘流转后常报 octet-stream）。
-- **国际化**：英文 + 简体中文（zh-rCN）+ 繁体中文（zh-rTW，台湾用语：設定/檔案/匯入/連線/連接埠/快取/伺服器/金鑰/還原/套用/群組/逾時，非简转繁），Composable 用 `stringResource`、非 Composable 用 `context.getString`；日志英文，代码注释中文。
+- **国际化**：英文 + 简体中文（zh-rCN）+ 繁体中文（zh-rTW，台湾用语：設定/檔案/匯入/連線/連接埠/快取/伺服器/金鑰/還原/套用/群組/逾時，非简转繁），Composable 用 `stringResource`、非 Composable 用 `context.getString`；日志英文，代码注释中文。**data 层拿不到资源**：会被用户看见的兜底值（如订阅自动命名的最后一环）由调用方按 locale 注入，别在 data 层写字面量，也别为此把 Context 拉进去。
 
 ## 数据库（Room 3）
 
@@ -175,7 +175,7 @@ mihomo 经 submodule 引入 Mishka fork（branch `Mishka`）。Gradle 按 ABI �
 
 **Mishka 自身包名必须绕过 TUN/VPN**：`ProcessBuilder` 子进程 HTTP 被代理捕获会永久阻塞。ROOT 三种 AppProxyMode 都把 `packageName` 从 include 剔除或塞进 exclude；VPN `AllowSelected` 分支先过滤 self 再 addAllowed，过滤后空列表退化到 `addDisallowedApplication(self)`。
 
-**协程锁规则**：`kotlinx.coroutines.sync.Mutex` **不可重入**。`updateImported`/`commitPending`/`queryImported`/`queryPending` 被 `ProfileProcessor` 在 `withProfileLock{}` 内调用，**不能自己加锁**；`create`/`patch`/`release`/`clone`/`delete` 直接被 ViewModel 调用，**保留自身锁**。
+**协程锁规则**：`kotlinx.coroutines.sync.Mutex` **不可重入**。`updateImported`/`commitPending`/`queryImported`/`queryPending` 被 `ProfileProcessor` 在 `withProfileLock{}` 内调用，**不能自己加锁**；`create`/`patch`/`release`/`delete` 直接被 ViewModel 调用，**保留自身锁**。
 
 **processing/ 单例目录必须进程级串行**：`processing/` 是进程内单例沙箱（路径不带 uuid），`prepareProcessing` 每次清空后重填、`commitProcessingToImported(uuid)` 再换入 imported/。因此 `ProfileProcessor.processLock` 必须是 **companion 进程级** Mutex——前台 `SubscriptionViewModel.processor` 与后台 `ProfileWorker.processor`（每个 `ACTION_UPDATE_PROFILE` 都新建）是不同实例；锁若实例级，两个并发 update 会交错清空同一 `processing/`，把 B 下载的 config 提交进 `imported/A/`，造成「界面显示订阅 A、点击启动实际运行 B」的偶发 Bug（自动更新间隔相近时后台并发触发，纯被动）。启动清理残留也必须走 `ProfileProcessor.cleanupResidual()`（持同一把锁），不能直接 `ProfileFileOps.cleanupProcessing`。该方法同时按 DB 现存 uuid 反扫 `imported/`、`pending/` 删孤儿目录——删除订阅是「先删 DB 行 → 再删目录」两步，中间进程死亡会留下永远无人认领的目录；顺序上必须排在 `cleanupProcessing` 之后，后者会把 `commit.old.{uuid}` 还原回 imported/。
 
