@@ -28,25 +28,54 @@ Java_top_yukonga_mishka_service_ProcessHelper_nativeForkExec(
     const char *binary = (*env)->GetStringUTFChars(env, jBinary, NULL);
     const char *workDir = (*env)->GetStringUTFChars(env, jWorkDir, NULL);
     const char *logFile = jLogFile ? (*env)->GetStringUTFChars(env, jLogFile, NULL) : NULL;
+    char **argv = NULL;
+    int result = -1;
+    int argc = 0;
 
-    int argc = (*env)->GetArrayLength(env, jArgs);
+    if (binary == NULL || workDir == NULL || (jLogFile != NULL && logFile == NULL)) {
+        LOGE("GetStringUTFChars returned NULL");
+        goto cleanup;
+    }
+
+    argc = (*env)->GetArrayLength(env, jArgs);
     // argv: [binary, args..., NULL]
-    char **argv = (char **) calloc(argc + 2, sizeof(char *));
+    argv = (char **) calloc(argc + 2, sizeof(char *));
+    if (argv == NULL) {
+        LOGE("calloc for argv failed");
+        goto cleanup;
+    }
     argv[0] = strdup(binary);
+    if (argv[0] == NULL) {
+        LOGE("strdup binary failed");
+        goto cleanup;
+    }
     for (int i = 0; i < argc; i++) {
         jstring jArg = (jstring) (*env)->GetObjectArrayElement(env, jArgs, i);
+        if (jArg == NULL) {
+            LOGE("null arg at %d", i);
+            goto cleanup;
+        }
         const char *arg = (*env)->GetStringUTFChars(env, jArg, NULL);
-        argv[i + 1] = strdup(arg);
-        (*env)->ReleaseStringUTFChars(env, jArg, arg);
+        if (arg != NULL) {
+            argv[i + 1] = strdup(arg);
+            (*env)->ReleaseStringUTFChars(env, jArg, arg);
+        }
+        // 局部引用要显式释放：JNI 只保证 512 个 slot，argv 随新增 CLI flag 增长会突然溢出
+        (*env)->DeleteLocalRef(env, jArg);
+        if (argv[i + 1] == NULL) {
+            LOGE("strdup arg %d failed", i);
+            goto cleanup;
+        }
     }
-    argv[argc + 1] = NULL;
 
     LOGI("fork+exec: %s, workDir=%s, logFile=%s", binary, workDir, logFile ? logFile : "(null)");
 
     pid_t pid = fork();
 
     if (pid == 0) {
-        // 子进程：脱离会话组，不关闭任何 fd，直接 exec
+        // 子进程：脱离会话组，不关闭任何 fd，直接 exec。
+        // fork 与 exec 之间只能调 async-signal-safe 函数——__android_log_print 要取锁，
+        // 在这里调用可能死锁，**不要**往下面任何分支加日志
         setsid();
 
         if (chdir(workDir) != 0) {
@@ -69,22 +98,23 @@ Java_top_yukonga_mishka_service_ProcessHelper_nativeForkExec(
         _exit(127);
     }
 
-    // 父进程：清理
-    int result = (pid > 0) ? pid : -1;
     if (pid < 0) {
         LOGE("fork failed: %s", strerror(errno));
     } else {
         LOGI("child pid=%d", pid);
+        result = pid;
     }
 
-    for (int i = 0; argv[i] != NULL; i++) {
-        free(argv[i]);
+cleanup:
+    if (argv != NULL) {
+        for (int i = 0; argv[i] != NULL; i++) {
+            free(argv[i]);
+        }
+        free(argv);
     }
-    free(argv);
-    (*env)->ReleaseStringUTFChars(env, jBinary, binary);
-    (*env)->ReleaseStringUTFChars(env, jWorkDir, workDir);
-    if (logFile)
-        (*env)->ReleaseStringUTFChars(env, jLogFile, logFile);
+    if (binary != NULL) (*env)->ReleaseStringUTFChars(env, jBinary, binary);
+    if (workDir != NULL) (*env)->ReleaseStringUTFChars(env, jWorkDir, workDir);
+    if (logFile != NULL) (*env)->ReleaseStringUTFChars(env, jLogFile, logFile);
 
     return result;
 }
