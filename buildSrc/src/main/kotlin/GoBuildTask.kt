@@ -68,6 +68,15 @@ abstract class GoBuildTask : DefaultTask() {
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
+    /**
+     * c-shared 模式下 go 与 .so 一并生成的头文件，被 CMake 的 target_include_directories 消费。
+     * 不声明为输出就不受追踪，stale-output 清理有机会把它删掉，而报错是 CMake 的
+     * `libmihomo.h: No such file`，与真实原因隔了一层。
+     */
+    @get:OutputFile
+    @get:Optional
+    abstract val headerFile: RegularFileProperty
+
     @TaskAction
     fun build() {
         val outFile = outputFile.get().asFile
@@ -82,6 +91,9 @@ abstract class GoBuildTask : DefaultTask() {
             args += it.joinToString(",")
         }
         args += "-trimpath"
+        // go 默认探测 VCS 状态往二进制里塞 stamp：多花时间、产物不可复现，
+        // 且在没有 git 或仓库属主不匹配的容器里直接构建失败
+        args += "-buildvcs=false"
         // 不设 SONAME，消费方链接器会把构建期绝对路径烙进 DT_NEEDED，运行时 dlopen 必失败
         val ldflagsBuilder = StringBuilder("-s -w -X ${moduleVersionPath.get()}=${versionName.get()}")
         if (buildMode.get() == BuildMode.CShared) {

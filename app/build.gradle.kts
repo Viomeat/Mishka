@@ -234,6 +234,7 @@ val buildMihomoTasks = supportedAbis.map { abi ->
         minSdk.set(ProjectConfig.Android.MIN_SDK)
         moduleVersionPath.set(mihomoVersionPath)
         outputFile.set(layout.projectDirectory.file("src/main/jniLibs/$abi/libmihomo.so"))
+        headerFile.set(layout.projectDirectory.file("src/main/jniLibs/$abi/libmihomo.h"))
     }
 }
 
