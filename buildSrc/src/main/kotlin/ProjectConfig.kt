@@ -11,8 +11,23 @@ object ProjectConfig {
     }
 }
 
-fun org.gradle.api.Project.getGitVersionCode(): Int {
-    return providers.exec {
-        commandLine("git", "rev-list", "--count", "HEAD")
-    }.standardOutput.asText.get().trim().toInt()
-}
+/** git 不可用时的 versionCode 兜底：从 tarball 解出、PATH 无 git、CI 浅克隆都会走到这里。 */
+private const val FALLBACK_VERSION_CODE = 1
+
+/**
+ * 提交数作为 versionCode。**调用方应只求值一次**——每次求值都 fork 一个 git 进程，
+ * 且结果是配置缓存的输入。
+ *
+ * 失败必须兜底：`.trim().toInt()` 在空输出上抛的是 NumberFormatException，报错内容与
+ * 「这台机器上没有 git」毫无关系，排查要绕一大圈。
+ */
+fun org.gradle.api.Project.getGitVersionCode(): Int =
+    runCatching {
+        providers.exec {
+            commandLine("git", "rev-list", "--count", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.get().trim().toInt()
+    }.getOrElse {
+        logger.warn("git rev-list failed (${it.message}); versionCode falls back to $FALLBACK_VERSION_CODE")
+        FALLBACK_VERSION_CODE
+    }

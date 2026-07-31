@@ -35,8 +35,11 @@ room3 {
     schemaDirectory("$projectDir/schemas")
 }
 
+// 每次求值都 fork 一个 git 进程，且 versionCode 与 archivesName 都要用，求值一次共用
+val gitVersionCode = getGitVersionCode()
+
 val properties = Properties()
-runCatching { properties.load(project.rootProject.file("local.properties").inputStream()) }
+runCatching { project.rootProject.file("local.properties").inputStream().use { properties.load(it) } }
 val keystorePath: String? = properties.getProperty("KEYSTORE_PATH") ?: System.getenv("KEYSTORE_PATH")
 val keystorePwd: String? = properties.getProperty("KEYSTORE_PASS") ?: System.getenv("KEYSTORE_PASS")
 val alias: String? = properties.getProperty("KEY_ALIAS") ?: System.getenv("KEY_ALIAS")
@@ -79,7 +82,7 @@ android {
         minSdk = ProjectConfig.Android.MIN_SDK
         targetSdk = ProjectConfig.Android.TARGET_SDK
         versionName = ProjectConfig.VERSION_NAME
-        versionCode = getGitVersionCode()
+        versionCode = gitVersionCode
     }
     dependenciesInfo {
         includeInApk = false
@@ -215,6 +218,6 @@ androidComponents {
 
 base {
     archivesName.set(
-        "${ProjectConfig.APP_NAME}-v${ProjectConfig.VERSION_NAME}(${getGitVersionCode()})",
+        "${ProjectConfig.APP_NAME}-v${ProjectConfig.VERSION_NAME}($gitVersionCode)",
     )
 }
