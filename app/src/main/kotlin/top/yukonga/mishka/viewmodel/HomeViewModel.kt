@@ -14,7 +14,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -481,7 +480,6 @@ class HomeViewModel(
         trafficJob?.cancel()
         trafficJob = viewModelScope.launch {
             repository?.trafficFlow()
-                ?.catch { /* 连接断开 */ }
                 ?.collect { traffic ->
                     upHistory.addLast(traffic.up)
                     downHistory.addLast(traffic.down)
@@ -515,7 +513,6 @@ class HomeViewModel(
         _topConnectionRates.value = null
         connectionRateJob = viewModelScope.launch {
             repo.connectionsFlow()
-                .catch { /* 连接断开 */ }
                 .collect { response ->
                     if (repository !== repo) return@collect
                     updateConnectionRates(response.connections)
@@ -573,7 +570,6 @@ class HomeViewModel(
         memoryJob?.cancel()
         memoryJob = viewModelScope.launch {
             repository?.memoryFlow()
-                ?.catch { /* 连接断开 */ }
                 ?.collect { memory ->
                     _memoryState.value = MemorySnapshot(
                         ramUsage = FormatUtils.formatBytes(memory.inuse),

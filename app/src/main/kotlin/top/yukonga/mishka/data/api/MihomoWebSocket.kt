@@ -80,13 +80,11 @@ class MihomoWebSocket(
                     addLiveConnection(1)
                     backoffMs = INITIAL_BACKOFF_MS
                     for (frame in incoming) {
-                        if (frame is Frame.Text) {
-                            try {
-                                emit(parser(frame.readText()))
-                            } catch (_: Exception) {
-                                // 跳过解析失败的帧
-                            }
-                        }
+                        if (frame !is Frame.Text) continue
+                        // 只兜解析：emit 留在 try 外，否则下游抛出的异常会被当成坏帧吞掉，
+                        // 下一次 emit 撞上 flow 的异常透明性检查，症状与「服务端断了」难以区分
+                        val parsed = runCatching { parser(frame.readText()) }.getOrNull() ?: continue
+                        emit(parsed)
                     }
                 }
             } catch (ce: CancellationException) {
