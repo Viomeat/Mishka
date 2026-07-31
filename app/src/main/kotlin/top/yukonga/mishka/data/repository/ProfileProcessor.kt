@@ -121,6 +121,9 @@ class ProfileProcessor(
                     throw e
                 }
 
+                // commit 从这里到块尾不可取消：目录 rename 换入与 DB 更新之间被打断就是两者不一致。
+                // 块内还要再取 profileLock，等锁期间同样取消不了；processLock → profileLock
+                // 这个嵌套顺序全仓只此一处，别在别处反着取
                 withContext(NonCancellable) {
                     repo.withProfileLock {
                         if (isUpdate) {

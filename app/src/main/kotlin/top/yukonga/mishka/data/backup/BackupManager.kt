@@ -368,9 +368,12 @@ class BackupManager(
         private val RESTORE_TARGETS = listOf("imported", "pending", OVERRIDE_FILE)
 
         /**
-         * 不进备份也不从备份恢复的 key：本机/本次运行的设备态（root 探测、进程 PID、
-         * boot session、Wi-Fi 策略运行时中间态、一次性迁移标记）与 WebDAV 凭据自身
-         * （凭据是「连到这份备份」的前提，写进备份既无意义又多一份泄露面）。
+         * 不进备份也不从备份恢复的 key，两类语义：
+         * ① 本机/本次运行的设备态（root 探测、进程 PID、boot session、Wi-Fi 策略运行时
+         *    中间态、一次性迁移标记）——跨设备恢复会把别人的 PID / boot count 带进来；
+         * ② WebDAV 凭据自身（凭据是「连到这份备份」的前提，写进备份既无意义又多一份泄露面）。
+         *
+         * **新增任何运行时态 key 都要补进本名单**，否则它会随备份跨设备漂移。
          */
         private val EXCLUDED_PREF_KEYS = setOf(
             StorageKeys.SERVICE_WAS_RUNNING,

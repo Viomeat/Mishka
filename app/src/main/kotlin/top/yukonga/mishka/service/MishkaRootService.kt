@@ -498,6 +498,11 @@ class MishkaRootService : Service() {
         }
     }
 
+    /**
+     * 进程死亡监测。ROOT 下 `runner.isRunning` 每轮 fork 一个 su（`/proc` 是 hidepid，
+     * app 读不到 root 进程），5s 是「掉线多久被发现」与「每分钟 12 次 su」之间的取舍，
+     * 不是可以随手往下调的普通轮询。
+     */
     private fun startProcessMonitor(workDir: File) {
         monitorJob?.cancel()
         monitorJob = scope.launch {

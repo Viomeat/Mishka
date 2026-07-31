@@ -3,6 +3,13 @@ package top.yukonga.mishka.ui.navigation3
 import androidx.navigation3.runtime.NavKey
 import kotlinx.serialization.Serializable
 
+/**
+ * 二级页路由。back stack 靠 `Json.encodeToString<Route>` 多态编码整条栈持久化，
+ * 新增路由只要 `@Serializable` 就自动获得进程死亡恢复能力。
+ *
+ * **基类这行 `@Serializable` 不能删**：看起来与各子类的标注重复，删掉照样编译，
+ * 但多态序列化器由基类注册，缺了它恢复 back stack 时运行时抛 SerializationException。
+ */
 @Serializable
 sealed interface Route : NavKey {
     @Serializable

@@ -7,6 +7,8 @@
 
 #include "libmihomo.h"
 
+// 两种指针在同一个函数体里混用，别弄反：本函数返回的是 strdup 出来的**本地**副本，
+// 调用方用 free()；go_cstr_to_jstring 收的才是 Go 那边的内存，只能 mishkaFreeString。
 static char *jstring_to_cstr(JNIEnv *env, jstring s) {
     if (!s) return NULL;
     const char *tmp = (*env)->GetStringUTFChars(env, s, NULL);

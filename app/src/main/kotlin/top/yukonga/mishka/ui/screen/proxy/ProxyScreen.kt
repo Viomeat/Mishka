@@ -163,6 +163,11 @@ fun ProxyScreen(
 
     // 展开/收起进度（per 组，1 = 完全展开）。收起先跑动画再从 expandedGroups 摘除，期间靠
     // retainedGroups 保住行 item——变成 disappearing item 就会脱离布局在原位淡出，与上移的下方内容穿插
+    //
+    // 注意这是**普通** mutableMapOf 而非 mutableStateMapOf：新增 key 本身不触发重组，
+    // 它能驱动 UI 只因 toggleGroup 里每次 getOrPut 之后**必定**跟一次 expandedGroups /
+    // animatingGroups（都是 SnapshotStateList）的写。调换那两处顺序、或新增一条只改本 map
+    // 的路径，就会静默漏掉重组——不会报错，只是那一组不动
     val expandProgress = remember { mutableMapOf<String, MutableFloatState>() }
     val retainedGroups = remember { mutableStateListOf<String>() }
     val animatingGroups = remember { mutableStateListOf<String>() }

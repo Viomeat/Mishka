@@ -15,6 +15,8 @@ fun getAppDatabase(context: Context): AppDatabase {
             context.getDatabasePath("mishka.db").absolutePath,
         )
             .setDriver(BundledSQLiteDriver())
+            // 新增的 MIGRATION 必须补进这里：漏注册对全新安装毫无影响（建表走当前 schema），
+            // 升级用户首次启动即 crash
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
             .also { INSTANCE = it }

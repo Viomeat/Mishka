@@ -7,6 +7,11 @@ import androidx.room3.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
+/**
+ * 改 [version] 是三件事一起做：写 Migration → 在 `AppDatabaseBuilder` 的 `addMigrations`
+ * 注册 → 跑一次 `:app:assembleDebug` 让 KSP 把新 schema 导出到 `app/schemas/` 并提交。
+ * 少任一步都不会在构建期报错。
+ */
 @Database(
     entities = [ImportedEntity::class, PendingEntity::class, SelectionEntity::class],
     version = 3,

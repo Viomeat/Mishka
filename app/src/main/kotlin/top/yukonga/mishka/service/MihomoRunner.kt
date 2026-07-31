@@ -24,6 +24,11 @@ class MihomoRunner(private val context: Context) {
     var errorMessage: String = ""
         private set
 
+    /**
+     * 进程是否仍在。两条分支代价差一个量级：VPN 走 `waitpid(WNOHANG)`（本进程亲生子，
+     * 顺带收僵尸，基本免费），**ROOT 每次调用都要 fork 一个 su**——`/proc` 在 Android 10+
+     * 是 hidepid，app 根本读不到 root 进程，判活只能借 root shell。轮询它的地方要自己控频。
+     */
     val isRunning: Boolean
         get() = childPid > 0 && if (isRootMode) RootHelper.isAliveAsRoot(childPid) else isProcessAlive(childPid)
 
@@ -32,7 +37,7 @@ class MihomoRunner(private val context: Context) {
      *   1. PID 存活（kill -0）
      *   2. cmdline 含 libmihomo_runner.so（防 PID 复用撞其他 root 进程）
      *   3. stored secret 能通过 /configs 鉴权（防 secret 漂移导致 UI 假 Running）
-     * 校验阶段**不**修改任何 field，全部通过后再原子赋值。
+     * 校验阶段**不**修改任何 field，三条全过之后才落状态。
      * 订阅一致性由调用方在此之前校验（persisted subscriptionId vs 请求的 subscriptionId）。
      */
     fun attachToExisting(

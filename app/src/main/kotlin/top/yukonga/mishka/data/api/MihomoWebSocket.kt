@@ -70,6 +70,13 @@ class MihomoWebSocket(
         apiClient.getWebSocketUrl("/connections"),
     ) { text -> json.decodeFromString<ConnectionsResponse>(text) }
 
+    /**
+     * 无限重连的帧流：连上 → 逐帧 emit → 断开 → 退避重连，除取消外不终结。
+     *
+     * **[close] 不会让本流结束**：client 关闭后 `webSocket()` 抛的引擎异常同样被下面的
+     * catch 吞掉，只是进入退避循环（封顶 30s）。消费方必须显式 cancel 收集协程，
+     * 否则留下的是一条按 30s 周期重试的僵尸流——这条是 Ktor 的行为，看调用点推不出来。
+     */
     private fun <T> webSocketFlow(url: String, parser: (String) -> T): Flow<T> = flow {
         var backoffMs = INITIAL_BACKOFF_MS
         while (currentCoroutineContext().isActive) {
@@ -88,6 +95,7 @@ class MihomoWebSocket(
                     }
                 }
             } catch (ce: CancellationException) {
+                // 必须排在通用 catch 之前：取消一旦被下面那条吞掉，重连循环就再也停不下来
                 throw ce
             } catch (_: Exception) {
                 // 连接异常，走重连路径
