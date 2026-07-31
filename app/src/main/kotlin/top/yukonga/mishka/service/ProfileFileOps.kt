@@ -188,6 +188,23 @@ object ProfileFileOps {
         }
     }
 
+    /**
+     * 删除 imported/ 与 pending/ 下不属于 [knownUuids] 的目录，返回被删的 uuid。
+     *
+     * 删除订阅是「先删 DB 行 → 再删目录」两步，中间进程死亡就留下永远无人认领的目录；
+     * 只有 DB 才知道哪些还算数，故按现存 uuid 反扫。
+     */
+    fun deleteOrphanProfileDirs(context: Context, knownUuids: Set<String>): List<String> {
+        val workDir = getWorkDir(context)
+        val orphans = listOf("imported", "pending")
+            .flatMap { sub -> File(workDir, sub).listFiles()?.filter { it.isDirectory }.orEmpty() }
+            .map { it.name }
+            .distinct()
+            .filter { it !in knownUuids }
+        orphans.forEach { deleteProfileDirs(context, it) }
+        return orphans
+    }
+
     // === ROOT 运行时沙箱 ===
 
     /**

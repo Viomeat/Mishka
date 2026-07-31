@@ -36,7 +36,6 @@ import top.yukonga.mishka.platform.AndroidWifiPolicy
 import top.yukonga.mishka.platform.BootStartManager
 import top.yukonga.mishka.platform.FilePicker
 import top.yukonga.mishka.platform.PlatformStorage
-import top.yukonga.mishka.platform.ProfileFileManager
 import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.platform.WifiPolicyController
@@ -144,12 +143,10 @@ class MainActivity : ComponentActivity() {
         val storage: PlatformStorage = get()
         val initialThemeConfig = readThemeConfig(storage)
         updateEdgeToEdge(initialThemeConfig)
-        val fileManager: ProfileFileManager = get()
-        // 清理 processing/ 残留：经 ProfileProcessor 的进程级锁串行，避免擦掉后台 ProfileWorker
-        // 正在进行的更新写到 processing/ 的内容
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            ProfileProcessor.cleanupResidual(fileManager)
-        }
+        // 清理 processing/ 残留与孤儿订阅目录：经 ProfileProcessor 的进程级锁串行，
+        // 避免擦掉后台 ProfileWorker 正在进行的更新写到 processing/ 的内容
+        val profileProcessor: ProfileProcessor = get()
+        lifecycleScope.launch { profileProcessor.cleanupResidual() }
         top.yukonga.mishka.ui.platform.IconDiskCache.init(this)
         serviceController = get()
         // VPN 授权走 Activity Result API：MainActivity 注册 launcher，由 ProxyServiceController 触发，

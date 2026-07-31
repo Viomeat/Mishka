@@ -73,6 +73,10 @@ class AndroidProfileFileManager(private val context: Context) : ProfileFileManag
         ProfileFileOps.deleteProfileDirs(context, uuid)
     }
 
+    override fun deleteOrphanDirs(knownUuids: Set<String>): List<String> {
+        return ProfileFileOps.deleteOrphanProfileDirs(context, knownUuids)
+    }
+
     override fun cloneFiles(sourceUuid: String, targetUuid: String) {
         ProfileFileOps.cloneImportedToPending(context, sourceUuid, targetUuid)
     }

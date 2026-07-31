@@ -1,5 +1,6 @@
 package top.yukonga.mishka.data.repository
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -40,6 +41,21 @@ class ProfileProcessor(
     private val fileManager: ProfileFileManager,
     private val proxyResolver: SubscriptionProxyResolver,
 ) {
+
+    /**
+     * 启动清理：processing/ 残留 + 孤儿订阅目录（删除是先删 DB 行再删目录两步，中间进程
+     * 死亡会留下无人认领的 imported/{uuid}/）。必须与 [runProcess] 持同一把进程级锁，
+     * 否则会擦掉后台 ProfileWorker 正在进行的更新写到 processing/ 的内容。
+     */
+    suspend fun cleanupResidual() = withContext(Dispatchers.IO) {
+        processLock.withLock {
+            // 顺序有意义：cleanupProcessing 会把 commit.old.{uuid} 还原回 imported/，
+            // 反扫必须看到还原后的结果
+            fileManager.cleanupProcessing()
+            val orphans = fileManager.deleteOrphanDirs(repo.knownUuids())
+            if (orphans.isNotEmpty()) Log.i(TAG, "Removed orphan profile dirs: $orphans")
+        }
+    }
 
     suspend fun apply(uuid: String, onProgress: (ImportProgress) -> Unit = {}) {
         runProcess(uuid, isUpdate = false, onProgress)
@@ -176,13 +192,7 @@ class ProfileProcessor(
          */
         private val processLock = Mutex()
 
-        /**
-         * 清理 processing/ 残留（应用启动时调用）。必须与 [runProcess] 持同一把进程级锁，否则会
-         * 擦掉后台 ProfileWorker 正在进行的更新写到 processing/ 的内容。
-         */
-        suspend fun cleanupResidual(fileManager: ProfileFileManager) = processLock.withLock {
-            fileManager.cleanupProcessing()
-        }
+        private const val TAG = "ProfileProcessor"
 
         /**
          * 以进程级锁独占执行 [block]。WebDAV 备份/恢复用：备份读取 imported/ 期间不能有

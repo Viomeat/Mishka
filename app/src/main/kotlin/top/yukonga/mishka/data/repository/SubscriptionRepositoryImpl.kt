@@ -302,6 +302,11 @@ class SubscriptionRepositoryImpl(
         }
     }
 
+    /** DB 里现存的全部订阅 uuid（imported + pending），供启动时反扫孤儿目录。 */
+    suspend fun knownUuids(): Set<String> = profileLock.withLock {
+        (importedDao.queryAllUUIDs() + pendingDao.queryAllUUIDs()).toSet()
+    }
+
     /**
      * 删除订阅（同时清除 Imported、Pending、Selection）。
      */

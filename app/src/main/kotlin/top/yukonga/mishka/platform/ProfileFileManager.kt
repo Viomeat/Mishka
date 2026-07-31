@@ -46,6 +46,9 @@ interface ProfileFileManager {
     fun writeImportedFile(uuid: String, relativePath: String, content: String)
     fun deleteDirs(uuid: String)
 
+    /** 删除 imported/ 与 pending/ 下不属于 [knownUuids] 的目录（启动时清孤儿），返回被删的 uuid。 */
+    fun deleteOrphanDirs(knownUuids: Set<String>): List<String>
+
     /** 复制 imported/{sourceUuid}/ → pending/{targetUuid}/，供 duplicate 流程使用。 */
     fun cloneFiles(sourceUuid: String, targetUuid: String)
 }
