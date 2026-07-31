@@ -1,11 +1,16 @@
 package top.yukonga.mishka.data.repository
 
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,8 +59,8 @@ class SubscriptionRepositoryImpl(
 
     private val profileLock = Mutex()
     private val _activeUuid = MutableStateFlow(storage.getString(StorageKeys.ACTIVE_PROFILE_UUID, ""))
-    private val _subscriptions = MutableStateFlow<List<Subscription>>(emptyList())
-    override val subscriptions: StateFlow<List<Subscription>> = _subscriptions.asStateFlow()
+    private val _subscriptions = MutableStateFlow<ImmutableList<Subscription>>(persistentListOf())
+    override val subscriptions: StateFlow<ImmutableList<Subscription>> = _subscriptions.asStateFlow()
 
     /**
      * mihomo runtime 聚合后的 active 订阅 live 流量。绑定 subscriptionId 避免用户切 active
@@ -82,8 +87,13 @@ class SubscriptionRepositoryImpl(
     init {
         scope.launch {
             combine(importedDao.getAllFlow(), _activeUuid, _liveProvider) { entities, activeId, live ->
-                entities.map { resolveProfile(it, activeId, live) }
-            }.collect { subs ->
+                // pending 一次取回建表：逐条 queryByUUID 会让任意 imported 写入 / active 切换 /
+                // live 推送都放大成 N 次查询
+                val pendingMap = pendingDao.queryAll().associateBy { it.uuid }
+                entities.map { resolveProfile(it, pendingMap[it.uuid], activeId, live) }
+                    .toPersistentList()
+                // 目录 mtime 是阻塞 stat，appScope 跑在 Default
+            }.flowOn(Dispatchers.IO).collect { subs ->
                 _subscriptions.value = subs
             }
         }
@@ -348,12 +358,12 @@ class SubscriptionRepositoryImpl(
 
     // === 视图解析（Pending 优先于 Imported；active 命中 live snapshot 时优先 live 流量） ===
 
-    private suspend fun resolveProfile(
+    private fun resolveProfile(
         imported: ImportedEntity,
+        pending: PendingEntity?,
         activeId: String,
         live: LiveProviderSnapshot?,
     ): Subscription {
-        val pending = pendingDao.queryByUUID(imported.uuid)
         // 优先级：编辑中的 Pending > 运行中的 live provider 聚合 > DB ImportedEntity。
         // 模板订阅（顶层 URL 无 subscription-userinfo header）的 DB 流量为 0，但 yaml 内
         // proxy-provider 的真实流量在 mihomo runtime 里——本合并让订阅页和主页看到一致数据
@@ -370,7 +380,8 @@ class SubscriptionRepositoryImpl(
             download = pending?.download ?: liveInfo?.Download ?: imported.download,
             total = pending?.total ?: liveInfo?.Total ?: imported.total,
             expire = pending?.expire ?: liveInfo?.Expire ?: imported.expire,
-            updatedAt = fileManager?.getDirectoryLastModified(imported.uuid, pending = true)
+            // 无草稿就不去 stat pending/ —— 该目录只随 pending 行一同创建
+            updatedAt = (if (pending != null) fileManager?.getDirectoryLastModified(imported.uuid, pending = true) else null)
                 ?: fileManager?.getDirectoryLastModified(imported.uuid, pending = false)
                 ?: imported.createdAt,
             isActive = imported.uuid == activeId,
