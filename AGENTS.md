@@ -190,7 +190,7 @@ mihomo 经 submodule 引入 Mishka fork（branch `Mishka`）。Gradle 按 ABI �
 
 **VPN MTU 同步**：`VpnService.Builder.setMtu` 与 mihomo `cfg.Tun.MTU` 必须同值。sing-tun 在 fd 模式给 gvisor `fdbased.New` 用 `cfg.Tun.MTU` 设 endpoint 缓冲，0 时所有 read 失败 → 表象「延迟正常但流量不通」。两侧共用 `RuntimeOverrideBuilder.VPN_TUN_MTU` 常量，禁止任一边 hardcode。
 
-**WebSocket 重连**：Ktor `for (frame in incoming)` graceful close 静默退出。`MihomoWebSocket.webSocketFlow` 自实现无限重连 + 指数退避（1s→30s）+ 20s 心跳；`CancellationException` 必须 rethrow。末尾 **`flowOn(Dispatchers.Default)` 不能删**——消费点全在 Main，不切走则每帧反序列化都占主线程；它引入的缓冲要求消费方除 cancel 外再做 `repository !== repo` 校验。`connectionState` 由四条流共享，**任一流退出即置 false**（关速度详情会让日志页显示「未连接」），不能据此判断单条流。
+**WebSocket 重连**：Ktor `for (frame in incoming)` graceful close 静默退出。`MihomoWebSocket.webSocketFlow` 自实现无限重连 + 指数退避（1s→30s）+ 20s 心跳；`CancellationException` 必须 rethrow。末尾 **`flowOn(Dispatchers.Default)` 不能删**——消费点全在 Main，不切走则每帧反序列化都占主线程；它引入的缓冲要求消费方除 cancel 外再做 `repository !== repo` 校验。`connectionState` 由四条流共享，语义是「**有任意一条**连着」，按引用计数发布——计数与发布必须一起原子（`@Synchronized`），否则并发增减会留下与实际相反的终值；握手失败的那次没计过数，`finally` 里不能无条件减。它**仍不能用来判断单条流**的死活。
 
 **startForeground 防御**：Tun/Root/ProfileWorker 的 onCreate 均 `try { startForeground() } catch(Exception)`。真实风险是 API 31+ `ForegroundServiceStartNotAllowedException` 和 API 34+ FGS type 异常（非 POST_NOTIFICATIONS 拒绝）。失败路径：Tun/Root 上报 Error + `stopSelf()`；ProfileWorker 仅 `stopSelf()`。**不降级为普通 Service**。
 

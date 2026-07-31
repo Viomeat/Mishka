@@ -38,7 +38,21 @@ class MihomoWebSocket(
     }
 
     private val _connectionState = MutableStateFlow(false)
+
+    /**
+     * 是否有**任意**一条 WS 连着。四条流共用一个布尔量时，取消其中一条（如关闭速度详情）
+     * 会在 finally 里把它写 false，日志页据此显示「未连接」——尽管日志 WS 一直活着。
+     * 故按引用计数发布；计数与发布必须一起原子，否则并发增减会留下与实际相反的终值。
+     */
     val connectionState: StateFlow<Boolean> = _connectionState.asStateFlow()
+
+    private var liveConnections = 0
+
+    @Synchronized
+    private fun addLiveConnection(delta: Int) {
+        liveConnections = (liveConnections + delta).coerceAtLeast(0)
+        _connectionState.value = liveConnections > 0
+    }
 
     fun trafficFlow(): Flow<TrafficData> = webSocketFlow(
         apiClient.getWebSocketUrl("/traffic"),
@@ -59,9 +73,11 @@ class MihomoWebSocket(
     private fun <T> webSocketFlow(url: String, parser: (String) -> T): Flow<T> = flow {
         var backoffMs = INITIAL_BACKOFF_MS
         while (currentCoroutineContext().isActive) {
+            var counted = false
             try {
                 wsClient.webSocket(url) {
-                    _connectionState.value = true
+                    counted = true
+                    addLiveConnection(1)
                     backoffMs = INITIAL_BACKOFF_MS
                     for (frame in incoming) {
                         if (frame is Frame.Text) {
@@ -78,7 +94,8 @@ class MihomoWebSocket(
             } catch (_: Exception) {
                 // 连接异常，走重连路径
             } finally {
-                _connectionState.value = false
+                // 握手失败时压根没计过数，无条件减会把别人的连接算没
+                if (counted) addLiveConnection(-1)
             }
             delay(backoffMs)
             backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
