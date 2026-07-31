@@ -387,8 +387,7 @@ class MishkaTunService : VpnService() {
                 delay(5_000)
             }
             // 进程异常退出
-            val logFile = File(workDir, "mihomo.log")
-            val logContent = if (logFile.exists()) logFile.readText().trim().lines().takeLast(10).joinToString("\n") else ""
+            val logContent = File(workDir, "mihomo.log").readLastLines(DEATH_LOG_LINES)
             val errorMsg = if (logContent.isNotBlank()) {
                 getString(R.string.error_mihomo_start_failed, logContent)
             } else {
@@ -488,6 +487,9 @@ class MishkaTunService : VpnService() {
 
     companion object {
         private const val TAG = "MishkaTunService"
+
+        /** 进程意外退出时随错误一起展示的日志行数 */
+        private const val DEATH_LOG_LINES = 10
         const val ACTION_START = "top.yukonga.mishka.START"
         const val ACTION_STOP = "top.yukonga.mishka.STOP"
         const val ACTION_RESTART = "top.yukonga.mishka.RESTART"

@@ -258,10 +258,7 @@ class MihomoRunner(private val context: Context) {
         return if (useRoot) {
             RootHelper.readLogFile(File(workDir, "mihomo.log").absolutePath)
         } else {
-            val logFile = File(workDir, "mihomo.log")
-            if (logFile.exists()) {
-                logFile.readText().trim().lines().takeLast(200).joinToString("\n")
-            } else ""
+            File(workDir, "mihomo.log").readLastLines(STARTUP_LOG_LINES)
         }
     }
 
@@ -325,5 +322,8 @@ class MihomoRunner(private val context: Context) {
 
         private const val GRACEFUL_STOP_TIMEOUT_MS = 3000
         private const val FORCE_STOP_TIMEOUT_MS = 500
+
+        /** 足以容纳 Go panic stack（30-50 行）+ panic 前的 first error，不被 stack 挤掉 */
+        private const val STARTUP_LOG_LINES = 200
     }
 }
