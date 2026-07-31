@@ -2,6 +2,7 @@ package top.yukonga.mishka.data.bridge
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -9,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /** age x25519 密钥对：secretKey 用于解密订阅，publicKey 供加密方使用。 */
@@ -59,24 +61,34 @@ object MishkaCoreBridge {
         onProgress: suspend (CoreFetchProgress) -> Unit,
     ): CoreFetchResult = coroutineScope {
         val token = tokenSeq.getAndIncrement()
+        val nativeDone = AtomicBoolean(false)
+        // 取消钩子必须**先于**阻塞调用挂上：JNI 调用不响应协程取消，等 withContext 抛
+        // CancellationException 时 Go 侧 defer 已清空 cancelRegistry，那时再调就是 no-op。
+        // 这条 watcher 在被取消的瞬间就让 Go ctx 进入 Done，native 随即带错返回。
+        val canceller = launch {
+            try {
+                awaitCancellation()
+            } finally {
+                if (!nativeDone.get()) runCatching { nativeCancel(token) }
+            }
+        }
         val pollerJob = launchProgressPoller(this, token, onProgress)
         try {
-            // age 全局密钥进程级共享：fetchAndValid 由 processLock 串行，fetch 前设置、后清空。
             val raw = withContext(Dispatchers.IO) {
+                // age 全局密钥进程级共享：fetchAndValid 由 processLock 串行，fetch 前设置、后清空。
                 nativeSetAgeSecretKey(ageSecretKey)
                 try {
                     nativeFetchAndValid(workDir, url, force, httpProxy, userAgent, token)
                 } finally {
+                    nativeDone.set(true)
                     nativeSetAgeSecretKey("")
                 }
             }
-            pollerJob.cancel()
             interpretResult(raw)
-        } catch (t: Throwable) {
-            // 让 Go ctx 立即 Done，native 函数尽快返回
-            runCatching { nativeCancel(token) }
+        } finally {
+            // canceller 停在 awaitCancellation，不显式取消会让 coroutineScope 永不返回
+            canceller.cancel()
             pollerJob.cancel()
-            throw t
         }
     }
 
