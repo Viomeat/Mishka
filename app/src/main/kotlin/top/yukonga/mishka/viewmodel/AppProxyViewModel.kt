@@ -3,6 +3,12 @@ package top.yukonga.mishka.viewmodel
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentSet
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,8 +30,8 @@ enum class AppProxyMode { AllowAll, AllowSelected, DenySelected }
 
 @Immutable
 data class AppProxyUiState(
-    val apps: List<AppInfo> = emptyList(),
-    val selectedPackages: Set<String> = emptySet(),
+    val apps: ImmutableList<AppInfo> = persistentListOf(),
+    val selectedPackages: PersistentSet<String> = persistentSetOf(),
     val mode: AppProxyMode = AppProxyMode.AllowAll,
     val searchQuery: String = "",
     val showSystemApps: Boolean = false,
@@ -43,33 +49,34 @@ class AppProxyViewModel(
 
     // 进入页面时的快照，用于检测配置是否变更
     private var initialMode: AppProxyMode = AppProxyMode.AllowAll
-    private var initialPackages: Set<String> = emptySet()
+    private var initialPackages: Set<String> = persistentSetOf()
 
     /** 排序锚点：进入页面时的初始勾选集合。整个会话保持不变，勾选不触发重排 */
     private val _sortAnchor = MutableStateFlow<Set<String>>(emptySet())
+
+    /** 列表重算的输入。勾选态刻意不在其中，故 toggle 不重跑过滤排序 */
+    private data class ListInput(
+        val apps: ImmutableList<AppInfo>,
+        val query: String,
+        val showSystemApps: Boolean,
+    )
 
     /**
      * 过滤 + 排序后的应用列表。
      * 依赖 apps / searchQuery / showSystemApps / sortAnchor，**不依赖 selectedPackages**——
      * 勾选只改变 checkbox 外观，不引起列表顺序变化（避免可见抖动）。
      */
-    val filteredAppsFlow: StateFlow<List<AppInfo>> = combine(
-        _uiState.map { Triple(it.apps, it.searchQuery, it.showSystemApps) }.distinctUntilChanged(),
+    val filteredAppsFlow: StateFlow<ImmutableList<AppInfo>> = combine(
+        _uiState.map { ListInput(it.apps, it.searchQuery, it.showSystemApps) }.distinctUntilChanged(),
         _sortAnchor,
     ) { (apps, query, showSystem), anchor ->
-        val q = query.lowercase()
-        apps
-            .filter { app ->
-                (showSystem || !app.isSystemApp) &&
-                        (q.isBlank() ||
-                                app.appName.lowercase().contains(q) ||
-                                app.packageName.lowercase().contains(q))
-            }
+        apps.filterApps(query, showSystem)
             .sortedWith(
                 compareByDescending<AppInfo> { it.packageName in anchor }
                     .thenBy { it.appName.lowercase() }
             )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+            .toPersistentList()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, persistentListOf())
 
     init {
         loadSavedState()
@@ -84,7 +91,7 @@ class AppProxyViewModel(
             AppProxyMode.AllowAll
         }
 
-        val packages = storage.getStringSet(StorageKeys.APP_PROXY_PACKAGES, emptySet())
+        val packages = storage.getStringSet(StorageKeys.APP_PROXY_PACKAGES, emptySet()).toPersistentSet()
 
         initialMode = mode
         initialPackages = packages
@@ -102,50 +109,43 @@ class AppProxyViewModel(
     }
 
     /**
-     * 对外兼容：selectAll / invertSelection 等需要当前可见列表的 package 集合。
+     * selectAll / invertSelection 等需要当前可见列表的 package 集合。
      * 直接读取 Flow 当前值，避免二次排序。
      */
     fun filteredApps(searchQuery: String = _uiState.value.searchQuery): List<AppInfo> {
-        if (searchQuery == _uiState.value.searchQuery) {
-            return filteredAppsFlow.value
-        }
-        // 查询词尚未同步到 uiState：做一次即时过滤，不排序（调用点仅用 packageName）
         val state = _uiState.value
-        val query = searchQuery.lowercase()
-        return state.apps.filter { app ->
-            (state.showSystemApps || !app.isSystemApp) &&
-                    (query.isBlank() ||
-                            app.appName.lowercase().contains(query) ||
-                            app.packageName.lowercase().contains(query))
-        }
+        if (searchQuery == state.searchQuery) return filteredAppsFlow.value
+        // 查询词尚未同步到 uiState：做一次即时过滤，不排序（调用点仅用 packageName）
+        return state.apps.filterApps(searchQuery, state.showSystemApps)
     }
 
     fun toggleApp(packageName: String) {
         val current = _uiState.value.selectedPackages
-        val updated = if (packageName in current) current - packageName else current + packageName
-        _uiState.value = _uiState.value.copy(selectedPackages = updated)
-        savePackages(updated)
+        applySelection(
+            if (packageName in current) current.remove(packageName) else current.add(packageName)
+        )
     }
 
     fun selectAll() {
-        val all = filteredApps().map { it.packageName }.toSet()
-        val updated = _uiState.value.selectedPackages + all
-        _uiState.value = _uiState.value.copy(selectedPackages = updated)
-        savePackages(updated)
+        applySelection(_uiState.value.selectedPackages.addAll(visiblePackages()))
     }
 
     fun deselectAll() {
-        _uiState.value = _uiState.value.copy(selectedPackages = emptySet())
-        savePackages(emptySet())
+        applySelection(persistentSetOf())
     }
 
     fun invertSelection() {
         val current = _uiState.value.selectedPackages
-        val visible = filteredApps().map { it.packageName }.toSet()
+        val visible = visiblePackages()
         // 保留不可见的已选项，对可见项取反
-        val inverted = (current - visible) + (visible - current)
-        _uiState.value = _uiState.value.copy(selectedPackages = inverted)
-        savePackages(inverted)
+        applySelection(current.removeAll(visible).addAll(visible - current))
+    }
+
+    private fun visiblePackages(): Set<String> = filteredApps().mapTo(mutableSetOf()) { it.packageName }
+
+    private fun applySelection(packages: PersistentSet<String>) {
+        _uiState.value = _uiState.value.copy(selectedPackages = packages)
+        storage.putStringSet(StorageKeys.APP_PROXY_PACKAGES, packages)
     }
 
     fun setMode(mode: AppProxyMode) {
@@ -166,13 +166,9 @@ class AppProxyViewModel(
     }
 
     fun importPackages(text: String) {
-        val packages = text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-        _uiState.value = _uiState.value.copy(selectedPackages = packages)
-        savePackages(packages)
-    }
-
-    private fun savePackages(packages: Set<String>) {
-        storage.putStringSet(StorageKeys.APP_PROXY_PACKAGES, packages)
+        applySelection(
+            text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toPersistentSet()
+        )
     }
 
     /** 配置变更时，若代理运行中则自动重启服务。返回是否发生了变更。 */
@@ -190,5 +186,15 @@ class AppProxyViewModel(
         initialMode = state.mode
         initialPackages = state.selectedPackages
         return true
+    }
+}
+
+private fun List<AppInfo>.filterApps(query: String, showSystemApps: Boolean): List<AppInfo> {
+    val q = query.lowercase()
+    return filter { app ->
+        (showSystemApps || !app.isSystemApp) &&
+                (q.isBlank() ||
+                        app.appName.lowercase().contains(q) ||
+                        app.packageName.lowercase().contains(q))
     }
 }

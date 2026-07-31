@@ -3,6 +3,8 @@ package top.yukonga.mishka.platform
 import android.Manifest
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -26,7 +28,7 @@ class AppListProvider constructor(private val context: PlatformContext) {
         }
     }
 
-    suspend fun getInstalledApps(): List<AppInfo> = withContext(Dispatchers.IO) {
+    suspend fun getInstalledApps(): ImmutableList<AppInfo> = withContext(Dispatchers.IO) {
         val pm = context.packageManager
         val selfPackage = context.packageName
 
@@ -50,5 +52,6 @@ class AppListProvider constructor(private val context: PlatformContext) {
                 )
             }
             .sortedBy { it.appName.lowercase() }
+            .toPersistentList()
     }
 }

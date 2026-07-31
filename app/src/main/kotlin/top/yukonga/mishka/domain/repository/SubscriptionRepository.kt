@@ -1,5 +1,6 @@
 package top.yukonga.mishka.domain.repository
 
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.flow.StateFlow
 import top.yukonga.mishka.domain.model.ProfileType
 import top.yukonga.mishka.domain.model.Subscription
@@ -14,7 +15,7 @@ import top.yukonga.mishka.domain.model.SubscriptionInfo
 interface SubscriptionRepository {
 
     /** 合并 pending > live provider > imported 三层后的订阅视图。 */
-    val subscriptions: StateFlow<List<Subscription>>
+    val subscriptions: StateFlow<ImmutableList<Subscription>>
 
     /** 当前活跃订阅（含 mihomo runtime 聚合流量）。 */
     val activeSubscription: StateFlow<Subscription?>

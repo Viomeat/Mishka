@@ -5,6 +5,8 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +30,7 @@ enum class ProfileOperation { Import, Update, Edit, Duplicate }
 
 @Immutable
 data class SubscriptionUiState(
-    val subscriptions: List<Subscription> = emptyList(),
+    val subscriptions: ImmutableList<Subscription> = persistentListOf(),
     val isLoading: Boolean = false,
     val error: String = "",
     val showAddDialog: Boolean = false,
