@@ -116,10 +116,21 @@ class WebDavClient(
             if (resp.status.value !in REDIRECT_CODES || hops >= MAX_REDIRECTS) return resp
             val location = resp.headers[HttpHeaders.Location] ?: return resp
             val next = runCatching { URI(current).resolve(location) }.getOrNull() ?: return resp
-            if (next.host == null || !next.host.equals(URI(url).host, ignoreCase = true)) return resp
+            if (!next.carriesCredentialsSafelyFrom(URI(current))) return resp
             current = next.toString()
             hops++
         }
+    }
+
+    /**
+     * 跟随重定向时是否仍可安全携带 Basic 凭据。跨主机会把密码送给第三方；同主机的
+     * https→http 降级则是把它明文发出去。允许 http→https 升级，禁止反向。
+     */
+    private fun URI.carriesCredentialsSafelyFrom(from: URI): Boolean {
+        if (host == null || !host.equals(from.host, ignoreCase = true)) return false
+        val fromHttps = from.scheme.equals("https", ignoreCase = true)
+        val toHttps = scheme.equals("https", ignoreCase = true)
+        return toHttps || !fromHttps
     }
 
     companion object {
