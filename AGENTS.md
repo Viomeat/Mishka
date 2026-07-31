@@ -2,7 +2,7 @@
 
 miuix + mihomo 的 Android 代理客户端。单模块 `:app`（`com.android.application`，AGP 9 内置 Kotlin，源码全在 `src/main`）+ `:baselineprofile`（`com.android.test`，只产 Baseline Profile 不进 APK）。UI 用 AndroidX Compose，miuix 走其 `-android` 发布件。
 
-本文件是 agent 指南的入口。`CLAUDE.md` 只有一行 `@AGENTS.md`——Claude Code 只自动读 `CLAUDE.md`。UI 规范拆在 [docs/ui-guidelines.md](docs/ui-guidelines.md)（**按需读，不自动加载**），其余长期约束都在本文件。
+本文件是 agent 指南的入口。`CLAUDE.md` 只有一行 `@AGENTS.md`——Claude Code 只自动读 `CLAUDE.md`。两块只在特定改动里才需要的约束拆了出去，**按需读、不自动加载**：[docs/root-mode.md](docs/root-mode.md)（改 ROOT / iptables / `su` 相关代码前）、[docs/ui-guidelines.md](docs/ui-guidelines.md)（改 `ui/` 下任何文件前）。其余长期约束都在本文件。
 
 ## 工作规程
 
@@ -67,7 +67,7 @@ MishkaApplication.startKoin ─ Koin（dataModule + androidPlatformModule + andr
 - **隧道三模式**（`TunMode { Vpn, RootTun, RootTproxy }`）：
   - **VPN**：VpnService 创建 TUN fd，mihomo 写 `tun.file-descriptor` + `auto-route=false`，工作目录 `imported/{uuid}/`（app UID）。
   - **ROOT TUN**：mihomo 以 root 自建 TUN，`auto-route=true` + `auto-detect-interface=true`，工作目录独立 `runtime/{uuid}/` 沙箱（启动前从 imported/ 拷贝，停止 `su rm -rf`）；imported/ 永远 app UID。
-  - **ROOT TPROXY**：`tun.enable=false`，`tproxy-port=7895` 入站 + `dns.listen=0.0.0.0:1053`；`RootTproxyApplier` 装 mangle/nat 规则与 fwmark 策略路由劫持本机与热点流量，常量与 chain 结构见「ROOT 模式热点处置」。
+  - **ROOT TPROXY**：`tun.enable=false`，`tproxy-port=7895` 入站 + `dns.listen=0.0.0.0:1053`；`RootTproxyApplier` 装 mangle/nat 规则与 fwmark 策略路由劫持本机与热点流量，常量与 chain 结构见 [docs/root-mode.md](docs/root-mode.md)。
   - **分应用代理**：VPN 走 VpnService API；ROOT TUN 走 mihomo `include/exclude-package`（sing-tun 翻译为 uidrange）；ROOT TPROXY 走 iptables `-m owner --uid-owner`（`AppListProvider.resolveUids` 解析包名）。**Mishka 自身始终排除**；**不**用 `routing-mark`/SO_MARK 自绕——Android Netd 用 fwmark 低 16 位编码 netId，自定义 SO_MARK 会让路由命中无默认路由的 legacy_system 表，出站全部 `network unreachable`（box_for_magisk / Surfing / box4magisk 三家同款教训）。
   - ROOT 两子模式共享 MishkaRootService，Intent 经 `EXTRA_SUBMODE = "tun"/"tproxy"` 区分；attach 前比对 `ROOT_SUBMODE_ACTIVE` 与请求 submode，不一致则 fresh restart。ROOT 进程在 app 被杀后仍存活，重开 app 靠持久化 PID/secret **attach-only** 重连。ROOT 不可用自动回退 VPN。
 - **Wi-Fi 自动切换**：`WifiPolicyMonitorService` 前台监控 active Wi-Fi SSID（精确匹配、去 Android 外层引号、忽略 `<unknown ssid>`），权限不足不触发。两种动作：**停止服务**（进入匹配 Wi-Fi 且运行中时记 `WIFI_POLICY_PENDING_RESTART` 后停止，离开时仅在 pending 存在时自动启动一次）；**Direct 模式**（进入写 `WIFI_POLICY_RUNTIME_MODE=direct`，离开清 override 回退用户持久 mode，统一经 `ProxyServiceController.restart()` 热重载，三模式行为一致；runtime mode 由 `RuntimeOverrideBuilder` 优先于 `override.user.json` 注入，不污染持久配置）。Starting 窗口内的切换排队待 Running 后补一次 restart；关闭功能时恢复被策略改动的状态。监控通知与切换通知用独立 channel。开机/包替换后 `WifiPolicyBootReceiver`（默认 disabled，随开关动态启用）恢复监控。
@@ -131,15 +131,11 @@ CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED +
 
 ## 关键架构约束
 
-不读代码看不出来的约束，违反会直接踩坑。
-
 **启动校验单点**：所有「启动代理」路径必须经 [ProxyServiceController.start / restart](app/src/main/kotlin/top/yukonga/mishka/platform/ProxyServiceController.kt)，两个 Service 因此不暴露 `start`/`stop` 静态入口——那是绕过校验的现成口子。`resolveStartSubscriptionId()` 统一校验 active 订阅 + `imported/{uuid}/config.yaml` 落盘，失败时一次完成 toast + `updateState(Error)` + 清 `SERVICE_WAS_RUNNING` + Running 时发 STOP。Intent 一律用类对象 + Service 自己的 action / extra 常量拼，**别写 FQCN 与 extra 字面量**：重命名时编译器不报错，故障表现是「attach-only 静默退化成全新启动」。新增入口（Wear / shortcut / 自动化）严禁直拉 Service；Service 内 `ProfileFileOps.hasValidConfig` 是针对 ADB / 三方 Intent 的兜底。Tile / 通知等无 Activity 上下文要在 VPN 模式弹授权，必须经 [VpnPermissionActivity](app/src/main/kotlin/top/yukonga/mishka/service/VpnPermissionActivity.kt)（`VpnService.prepare()` 要求 Activity context）。
 
 **Service 启动必须幂等串行**：`MishkaRootService` / `MishkaTunService` 用 `startJob`（`@Volatile`，跨主线程与 IO 协程访问）守门，`ACTION_START` 撞上进行中的启动直接忽略；`stopProxy` / `restartProxy` / `onRevoke` 必须先 `startJob?.cancelAndJoin()` 再往下走，否则被幂等检查挡掉而静默失效。ACTION_START 会在数百毫秒内到达两次：「打开应用自动连接」发一次，[BootReceiver](app/src/main/kotlin/top/yukonga/mishka/service/BootReceiver.kt) 收到补发的 BOOT_COMPLETED 再发一次（HyperOS 等 ROM 拒绝向未运行的 app 投递，改为等进程起来后补发，正好和自动连接撞车；BootReceiver 另 `new` 了一个 controller，绕过 `launchAutoConnectConsumed` 这个进程级去重标记）；两条启动协程并发跑 iptables 会互抢 `/system/etc/xtables.lock`，ROOT TPROXY 下直接打死启动。BootReceiver 只在 `state == Running` 时跳过（Starting 仍要发，好让下面的抢占生效），去重责任单点落在 Service。**症状指纹**：同一 Service 里两条 `Starting proxy` 日志、线程号不同。
 
 **唯一例外是 fresh START 抢占进行中的 attach-only**（cancel 后在新协程里 `join()` 等其收敛）：attach-only 失败只保持停止，而 fresh 请求表达的是「必须跑起来」；漏了这条，`AUTO_CONNECT_ON_LAUNCH` 关 + 开机自启开时 `reattachRoot` 会抢先占住 startJob 让开机自启失效。**抢占要靠显式 `isActive` 检查兜底**：attach-only 从入口到 `stopSelf()` 全程没有 suspend 点，`cancel()` 打断不了，必须在那个分支里自查 `isActive` 主动让位，否则它会 stopSelf 掉 Service、连带杀死接替的协程。
-
-**iptables 锁争用 ≠ 内核不支持**：所有 iptables/ip6tables 调用必须带 **`-w <秒>`**——裸 `-w` 是无限等待，撞锁会让启动链永久挂起。秒数已并进工具令牌（`IPT4`/`IPT6`/`IPT_BINS`），新增命令一律用令牌拼；`runWithOutput` 自动注入，只认带数字的 `-w`，超时须放宽到 `IPT_WAIT_SECONDS + 5`，否则等锁那几秒会被当成 su 错误。抢不到 xtables.lock 时退出码是 **4**（resource problem），与「内核没有该 target」在返回码上无法区分，故 `probeTproxySupport()` 必须：等锁 → 撞锁退避重试 → 重试耗尽仍是锁问题时**返回 true**，把结论交给真正的 apply 验证。误判「支持」最多让 apply 装不上规则并留日志，误判「不支持」会让 ROOT TPROXY 直接中止启动。
 
 **停止态一律走 `ProxyServiceBridge.markStopped(tunMode)` / `markStoppedUnlessError(tunMode)`**：**别再手写 `updateState(ProxyServiceStatus(Stopped))`**——那样 tunMode 落回默认 `Vpn`，终态谎称模式（消费方只能回读 storage，而 storage 是「用户当前选择」不是「刚才在跑的那个」）。**onDestroy 不得覆盖 Error**：失败路径都是 `updateState(Error) + stopSelf()`，紧接着就走 onDestroy，无条件写 Stopped 会立刻抹掉刚写入的 errorMessage，用户只看到「启动中 → 未运行」。Error 是终态，该规则封在 `markStoppedUnlessError`（CAS，非读后写）里，两个 Service 不可能各写错一份。配套：`HomeViewModel` 的 Error 分支弹 toast（errorMessage 不在首页渲染，Error 与 Stopped 视觉上无差别），同一条只弹一次、回到 Stopped 时清标记；发布方已自行 toast 过的（如 `resolveStartSubscriptionId`，它要覆盖 Tile / 通知这类没有 HomeViewModel 在场的入口）置 `errorNotified = true`，UI 层据此跳过。
 
@@ -152,8 +148,6 @@ CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED +
 **RuntimeOverrideBuilder 默认注入**（用户未显式设置时）：`tcp-concurrent=true`、`find-process-mode=off`（分应用已由 sing-tun / VpnService / iptables uid-owner 处理，运行期遍历 `/proc` 纯冗余）。ROOT TUN 额外默认 `tun.mtu=9000 + gso=true + gso-max-size=65535`（大包聚合减少 read syscall），由 `ROOT_TUN_JUMBO_MTU`（默认 true）控制，关闭回退 1500/false；VPN 不注入 MTU/GSO（由 `VpnService.Builder` 管）。mixed-port 优先级：① 用户 override 显式设置 → 用用户值；② 订阅 yaml 自带（`ConfigGenerator.readSubscriptionMixedPort` 行扫描）→ 不注入，避免兜底值覆盖订阅原值；③ `SUBSCRIPTION_UPDATE_VIA_PROXY` 启用 → 注入 7890 兜底；④ 其余不注入。
 
 **硬编码覆盖订阅（按 submode）**：`profile.store-selected=false` / `store-fake-ip=true` 三模式共用。VPN：`tun.enable=true` + `file-descriptor` + `dns-hijack=[0.0.0.0:53]` + `auto-route=false`，透传 stack/device。ROOT TUN：`auto-route=true` + `auto-detect-interface=true` + `iproute2-table-index=2022` + `iproute2-rule-index=9000` + dns-hijack + `include/exclude-package` + **`route-exclude-address`**（私网 + 组播 + 保留段，复用 `IptablesIntranet.V4`，IPv6 开启时叠加 `.V6`）——sing-tun `auto_route` 在该项为空时铺满 `0.0.0.0/0`，会把 LAN 单播与 224/4 组播一起吸进 TUN，破坏同 LAN 设备发现 / P2P 直连（妙享投屏）；VPN 由 `bypass_private_route` 分流、ROOT TPROXY 由 iptables RETURN 处理，唯独 ROOT TUN 缺这层。ROOT TPROXY：`tun.enable=false` + `tproxy-port=7895` + `dns.listen=0.0.0.0:1053`；**不写** `routing-mark`（Netd 冲突）、**不写** `include/exclude-package`（走 uid-owner）。
-
-**ROOT TPROXY 的 IPv6 注入必须门控**：`RootTproxyApplier.apply(ipv6Enabled)` 由 `VPN_ALLOW_IPV6` 决定（与 VPN/ROOT TUN 同一开关），默认 false 时跳过所有 ip6tables / `ip -6` 注入，IPv6 走内核原生路由；teardown 永远尝试清 v4+v6 保证切换无残留。mihomo 默认 `ipv6: false` 时无法 dial IPv6，TPROXY 无差别拦截 → accept → 拨号 "ip version error" → App 重试，形成 600 conn/s 紧密循环（实测 95s 产生 56k 失败 + 25MB 日志）。VPN/ROOT TUN 由 `inet6-address` 控制 TUN 是否注册 v6 默认路由，本身就有这层过滤。
 
 **secret 优先级**：用户设置 > 订阅 `config.yaml` 顶层 `secret:`（`readSubscriptionSecret` 行扫描）> 随机 UUID 前 16 字节；ROOT attach 分支走 storage 持久化的 `existingSecret`。实现单点是 `ConfigGenerator.resolveSecret`，两个 Service 都从那里取。
 
@@ -189,8 +183,6 @@ CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED +
 
 **切换 active 订阅的重启决策走权威状态**：`onActiveSubscriptionChanged()` **必须读 `serviceController.status`（ProxyServiceBridge）**，不能用 `uiState.isRunning`——后者是滞后 UI 标志，代理 Starting 窗口（约 10s）内仍为 false，切换会漏掉重启，导致「界面显示新订阅、代理仍跑旧订阅」。Starting/Stopping 过渡态先置 `pendingRestartOnRunning`，待 Running 再 `restartProxy()`；Stopped/Error 时清挂起标志。
 
-**ROOT runtime/ 沙箱**：ROOT mihomo 工作目录是独立 `runtime/{uuid}/`（从 imported/ 复制），不碰 imported/。启停钩子：`startProxy` 新鲜启动前 `prepareRootRuntime`；stop/restart/进程监控三条死亡路径都在 `clearPersistedState` 之前 `cleanupRootRuntime`；attach 分支**不重建**。存量旧 root:root 遗孤由 `MishkaApplication` 后台线程一次性 `su chown -R $APP_UID imported/` 迁移。
-
 **订阅导入不自动切换活跃**：`addSubscription`/`addFromFile` 成功后**不**调 `setActive`；仅首次导入（`count() == 1`）由 `commitProcessingToImported` 自动激活。
 
 **SubscriptionRepository 单例 + 订阅流量数据合并**：`SubscriptionRepositoryImpl` 由 Koin `single` 提供，SubscriptionViewModel 与 HomeViewModel 共用同一实例（`ProfileWorker` 例外，后台独立构建）；禁止 ViewModel 内 new。订阅页与主页流量栏的数据语义必须**强一致**——`resolveProfile` 在 combine 内合并三层 `pending > live provider snapshot > imported DB`，`_liveProvider` 携带 `subscriptionId` 做归属校验。三层缺一不可：模板订阅 DB.total=0 但 provider 各自有 header → live 覆盖；常规单源订阅 providers 为空 → fallback DB；File 型两边都为 0 → UI 显示 "--"。[HomeViewModel](app/src/main/kotlin/top/yukonga/mishka/viewmodel/HomeViewModel.kt) 是唯一 runtime producer：`refreshProviderTraffic` 取 GET 快照、`updateAllProviders` 逐 provider PUT 后再 GET（mihomo 的 `subscriptionInfo` 仅在 provider 更新时刷新，纯 GET 读到的永远是旧快照），`aggregateProviderInfo` 把所有 `Total > 0` 的 provider 求和、Expire 取最近非零后经 `onLiveProviderInfo` 推回 Repository——**必须聚合**，因为 `subscriptionInfo` 是 per-provider 解析 header 得来，多源 yaml 下 `values.firstOrNull()` 取到的是 Map 迭代顺序的随机 provider。该请求先取消前一次，并同时捕获 repository identity、active UUID 与递增 request ID，响应后每次写 UI 前重验三者；disconnect 或 UUID 改变时 cancel + 清空 + 使旧 ID 失效；失败仅更新错误态，不清空已确认的 live snapshot。
@@ -217,27 +209,7 @@ CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED +
 
 **订阅自动更新闹钟是 imported 表的派生态**：唯一调度点 [ProfileUpdateScheduler](app/src/main/kotlin/top/yukonga/mishka/service/ProfileUpdateScheduler.kt)，`MishkaApplication.onCreate` 起 collector 跟 `getAllFlow()` 对账——新增订阅、改间隔立即生效，删除自动撤闹钟。**不要退回「在各增删改路径上分别调 scheduleNext」**：那样只有开机与后台更新成功后才布置，本会话新增的订阅要等下次重启才自动更新，删掉的订阅闹钟则无人撤销。开机路径 app 进程可能只为收广播而起，`ProfileReceiver` → ProfileWorker → `reconcileNow()` 借前台服务的存活窗口做一次对账。进程重启后 `armed` 为空，DB 里已不存在的孤儿闹钟无从枚举——它至多空跑一次 ProfileWorker（uuid 查不到即返回）且不会续期，不值得为此再持久化一份状态。
 
-**任何进入 `su -c` 的外部值必须 `escapeShellSingleQuoted`**：双引号挡不住 `$(...)`。`--secret` 来自远端 config.yaml 行扫描、`--age-secret-key` 用户手填、device name 只 trim，上游均无字符校验，转义是唯一防线。启动日志只打 flag 名，密钥不进 logcat。
-
-**孤儿 mihomo 清理**：`RootHelper.cleanupOrphanedMihomo(tunDevice)` 单次 su shell 完成 pkill + `ip link delete <tunDevice>`（防 sing-tun EEXIST）。VPN 启动在 `hadRootPid || HAS_ROOT` 时触发，清 ROOT 持久化 key + 兜底 `cleanupAllRootRuntime`。
-
-**ROOT 模式重连校验**：`attachToExisting` 三重验证（`kill -0` 存活 + `/proc/$pid/cmdline` 含 libmihomo.so + stored secret 通过 `/configs` Bearer 鉴权 2xx）；订阅一致性由 `startProxy` 在 attach 前比对 persisted vs 请求 subscriptionId，不一致走 cleanup + 全新启动。
-
-**reopen 重连必须 attach-only + boot-session 门控**：app reopen（`onResume` → `verifyAndSyncState`）在 ROOT 模式走 `reattachRoot()` 发带 `EXTRA_ATTACH_ONLY=true` 的 START intent；`startProxy(attachOnly=true)` 在 attach 失败时**绝不回退全新启动**，而是清状态置 Stopped + `stopSelf`。`SERVICE_WAS_RUNNING` / `ROOT_MIHOMO_PID` 存在 SharedPreferences 跨重启保留，但重启会杀死 root mihomo → PID 过期；只凭「PID 非空」判活会造成「未开开机自启，重启后打开 app 却看到 ROOT 代理自动跑起来」。两层防护：① `verifyAndSyncState` 经 [BootSession](app/src/main/kotlin/top/yukonga/mishka/platform/BootSession.kt) 预门控（重启过 ⇒ 进程必死 ⇒ 清标志保持停止）；② attach-only 兜底覆盖预门控漏判的边界。**判据是 `Settings.Global.BOOT_COUNT`**（公开 API、免权限、每次开机递增）：精确、无时间窗口、不受时钟调整影响。**不要改回比较 `elapsedRealtime`**——那只有「重启后经过时间 < 上次启动代理时的 uptime」才识别得出重启，代理若在开机 30s 时启动，之后重启过了 30s 再打开 app 就漏判；也别用 `currentTimeMillis - elapsedRealtime` 推算开机时刻，NTP 校时会让它跳变。**宁可漏判不可误判**：漏判只多走一次 attach 尝试、由三重校验挡下过期 PID；误判会清掉仍有效的 PID，让活着的 mihomo 变成孤儿而 UI 显示未运行——故取不到 BOOT_COUNT 一律按「没重启」处理。`ROOT_BOOT_COUNT` 是运行时态，必须在 `BackupManager.EXCLUDED_PREF_KEYS` 里排除。**boot-start 例外**：BootReceiver 走 `start()`（全新启动）不受影响，若与 `reattachRoot()` 撞上由抢占规则裁决（fresh 赢）；「绝不回退」约束的是 attach-only 请求**自身**。
-
 **打开应用时自动连接**：`AUTO_CONNECT_ON_LAUNCH`（设置 General，默认关）与开机自启是**两个独立开关**——BootReceiver 只在 `SERVICE_WAS_RUNNING=true` 时恢复，自动连接不看上次状态。实现挂在 `verifyAndSyncState` 内部而非另起入口：两者都在回答「app 打开时代理该不该跑」，拆开会与 ROOT attach 路径抢跑（`start()` 异步，attach intent 发出后 bridge 仍是 Stopped，第二个入口读到会重复发 START）。这只挡得住 app 内的入口，进程外的 BootReceiver 仍会重复投递，兜底见「Service 启动必须幂等串行」。三条约束：① **每进程只消费一次**（controller 是 Koin single），冷启动触发、回前台不触发；② 静默校验走 `startableSubscriptionId()`（无副作用版），无可用订阅时什么都不做，不能用错误 toast 打断只是打开 app 的用户；③ VPN 缺授权时 `requestVpnPermission()`，授权回调接续启动。ROOT 分支此时改走 `start()`——它同样先三重校验 attach 复用，区别只在 attach 不成时允许全新启动，而这正是开关表达的意图。
-
-**ROOT 模式热点处置**：sing-tun `auto_route` 的 catch-all ip rule（priority 9002）不区分本机 vs 转发流量，热点客户端包 iif=wlan2/ap0 也命中被导进 TUN，但 mihomo 对非本机源 IP 处理不稳。`RootTetherHijacker` 在 sing-tun 之前插队两种处置：
-
-- **BYPASS（默认）**：`ip rule priority 8000/8002` 去程 + 回程均 action=`goto 9010`（sing-tun 自己的 nop marker）。去程越过 catch-all 后命中 Android 原生 iif forward rule → 走 wlan0/rmnet；回程 goto 过去命中 local_network/main 里的连接路由。
-- **PROXY**：内核态 TPROXY，**完全绕开 sing-tun userspace TCP stack**。`mangle PREROUTING -i <tether> -j mishka_tether` 把 TCP+UDP 劫持到 mihomo 的 `--on-port 7895 --tproxy-mark 0x01000000/0x01000000`（IP_TRANSPARENT socket）；`ip rule fwmark ... lookup 2024 priority 7999` + `ip route add local default dev lo table 2024` 让带 mark 的包在 PREROUTING 里被判定为本机投递——**这条 local default 是命门**，没有它带 mark 的包找不到接收 socket 直接丢。常量（bit 24 / table 2024 / priority 7999）对齐 box_for_magisk 一类验证过的取值，避开 Netd 低 16 位 mark。chain 顺序：① `--ctstate INVALID -j DROP`；② `IptablesIntranet` v4/v6 CIDR `-j RETURN`（DNS 除外，让 mihomo 处理 fake-ip）；③ `-m socket -j mishka_tether_divert`（ESTABLISHED 流仅打 fwmark + ACCEPT，跳过重拦截）；④ 新连接 `-j TPROXY`。
-- **PROXY 降级**：`xt_TPROXY` 不可用时退回「去程+回程对称 `lookup 2022`」（双向进 sing-tun，性能次于 TPROXY）。`probeTproxySupport()` runtime 探测，结果驱动 `buildAndWriteForRun(tproxyForTether = ...)` 决定是否写 `tproxy-port`；`ROOT_TPROXY_KERNEL_CAPABLE` 存探测结果，RootSettingsScreen 据此显示降级告警 Card，让用户明确感知而非静默 fallback。
-- **attach 路径约束**：mihomo 启动时 tproxy-port 是否监听已锁死，app 被杀期间用户若改过 tether mode，attach 上去规则会与实际状态错位。`ROOT_TETHER_MODE_ACTIVE` 存 start 成功时的快照，attach 前比对不一致则拒绝 attach、走 fresh restart。**attach 后条件 re-apply**：先 `anyRulesPresent()` probe 锚点（优先按 xt_comment 前缀 `mishka:tether:` / `mishka:tproxy:` 扫，次选 chain 名，最后 priority），present 则 skip、absent 才 re-apply——覆盖系统重启或与 box_for_magisk 共存被清残留的场景。`ROOT_ATTACH_FORCE_REAPPLY=true` 强制重建（诊断开关）。
-- **接口识别（纯手填）**：用户在 RootSettingsScreen 填 CSV（`ROOT_TETHER_IFACES`，默认 `wlan1,wlan2`），编辑对话框提供「检测当前接口」扫描按钮（`NetworkInterface` 列 UP + 有 site-local IPv4 + 不在蜂窝/隧道黑名单的候选，默认排除 `wlan0`）。不做实时自动发现——`TETHER_STATE_CHANGED` extras 在 Android 11+ 不可靠（@hide），regex 白名单又覆盖不全 OEM 命名。
-- **不能**用 `lookup main`——Android main 表无 default route。回程规则靠 `NetworkInterface.getByName` 读 InterfaceAddress + prefix 算 CIDR；接口未就绪（热点后开）会 WARN skip，需 restart 代理重新 apply。`ip rule add iif <name>` 对不存在接口按名注册、接口出现自动生效，`ip rule add to <subnet>` 则需 apply 时已有地址。生命周期：startProxy（含 attach）后 apply；stop/restart/死亡三路径 teardown（NonCancellable），两类规则都跑保证任意前置状态都清得干净，末尾 `verifyClean()` 扫锚点、残留重试一轮。**不做本机 TPROXY**：全 TPROXY 需重写 AppProxy、DNS、fake-ip 交互、IPv6 DNS 防泄漏一整条链，属独立重构。
-- **一切 root 批量操作走单次 su**：Magisk 下每次 `su` 约 30~100ms，全压在启停关键路径上。`teardown`（ip rule 删到失败为止 + `-S` 转 `-D`）、`verifyClean`、`dumpState`、apply 的 ~60 条命令都折成一次调用——**数据依赖的两步操作也要留在 shell 里做**（`iptables -S PREROUTING | grep | sed 's/^-A/-D/' | while read`），不要把中间结果拉回 Kotlin 再发第二轮。多条查询用 `echo '--- <key>'` 分段后在 Kotlin 侧切回。同理 `MihomoRunner.waitForReady` 的 ROOT 判活降到 4 轮一次（2s）：判活必须 fork su，而 API 探测是本地 HTTP、不花钱。
-
-**ROOT 模式不做动态通知**：`DynamicNotificationManager.startOrFallbackStatic` 在 `tunMode != Vpn` 时强制走静态分支，忽略用户 `DYNAMIC_NOTIFICATION` 偏好；设置开关在 ROOT 模式下 `enabled=false` + 副标题说明。VPN 靠 `BIND_VPN_SERVICE` 隐式让进程进入 `BOUND_FOREGROUND_SERVICE` 自动保 CPU；ROOT 无任何系统 binding，Activity 进后台后整个 device 进 idle，1Hz `/traffic` WS 帧合并、`notify()` 批处理，动态通知冻结。`PARTIAL_WAKE_LOCK` 实测被系统 DISABLED 救不了（只阻 SoC suspend 不阻 CPU idle）；唯一根治是引导用户 `IGNORE_BATTERY_OPTIMIZATIONS`，权衡后选择承认平台限制。ROOT TUN 看似能工作只是因为 mihomo 持续 `read(tun_fd)` 顺手撑住 device 不进 idle，不可靠且不一致。
 
 **日志列表按显示帧率发射**：日志风暴下可达数百行/秒。`appendLog` **只写 buffer + 置 `logsDirty`，不 emit**；独立 `flushJob` 每 120ms 才 `_logs.value = buffer.toPersistentList()`，把重组 + 500 条 key diff 从「日志行速率」降到「显示帧率」。**禁止**改回每行 emit。autoScroll 的 `LaunchedEffect` key 必须用 `logs.lastOrNull()?.id`（单调递增），**不能用 `logs.size`**——缓冲写满后 size 恒为 `MAX_LOGS`，跟随会永久停摆。
 
@@ -249,6 +221,10 @@ CMake `dependsOn(buildMihomo)`，产两个轻量件链 libmihomo.so（IMPORTED +
 
 **其他**：通知 id 按用途分区（1..99 固定前台通知 / 100..999 更新结果环形复用 / `0x10000+` per 订阅进度，散列 uuid 低 16 位），新增通知按区取号——不分区就会像旧的「固定 id + uuid 散列」那样跨到 Wi-Fi 监控前台通知与结果通知头上，特定 uuid 把别人的通知覆盖再取消掉；四个 `specialUse` 前台服务都要带 `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`（分发审核会看）；`Activity configChanges=uiMode` 防深浅色切换重建；预测性返回走 HiddenApiBypass 反射 `setEnableOnBackInvokedCallback`；`network_security_config.xml` 全局 `cleartextTrafficPermitted=true`（订阅源常用 HTTP；CMFA 因 fetch 在 Go 侧绕过 Java 网络栈而无需此设置，Mishka 的 Ktor 走 OkHttp 必须显式放行）；`jniLibs.useLegacyPackaging = true` 让 libmihomo.so 解压到 nativeLibraryDir，同时在 APK 内保持压缩存储（实测 59 MB → 19.3 MB），是净收益而非体积代价。
 
+## ROOT 模式约束
+
+全部在 [docs/root-mode.md](docs/root-mode.md)：iptables 锁争用与 `-w`、TPROXY 的 IPv6 门控、`runtime/` 沙箱、`su -c` 转义、孤儿进程清理、attach 三重校验与 boot-session 门控、热点处置的两种模式与规则集、ROOT 下不做动态通知。**改 ROOT / iptables / `su` 相关代码前先读它**——那边每条都是内核或权限层面的坑，违反了不报错，只表现为「连不上」或「规则残留」。
+
 ## UI 规范
 
-全部搬到 [docs/ui-guidelines.md](docs/ui-guidelines.md)：miuix 组件用法、页面骨架与毛玻璃、宽屏与刘海适配、卡片拆 lazy item、ProxyScreen 两条动画约束、Dialog / BottomSheet、语义色 token、Compose 状态形状与帧率级读取。**改 `ui/` 下任何文件之前先读它**——其中十余条属于「不读就会写错、写错了编译器不报错」。
+全部在 [docs/ui-guidelines.md](docs/ui-guidelines.md)：miuix 组件用法、页面骨架与毛玻璃、宽屏与刘海适配、卡片拆 lazy item、ProxyScreen 两条动画约束、Dialog / BottomSheet、语义色 token、Compose 状态形状与帧率级读取。**改 `ui/` 下任何文件前先读它**——其中十余条属于「不读就会写错、写错了编译器不报错」。
