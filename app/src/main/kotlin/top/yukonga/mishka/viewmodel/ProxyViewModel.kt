@@ -13,6 +13,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.collections.immutable.toPersistentSet
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,10 +118,15 @@ class ProxyViewModel(
 
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val groupsResult = repo.getGroups()
-            val proxiesResult = repo.getProxies()
-            val providersResult = repo.getProviders()
-            val mode = repo.getConfig().getOrNull()?.mode?.lowercase().orEmpty()
+            // 四个请求彼此无依赖，串行会把切 Tab 的刷新延迟叠成四个 RTT
+            val groupsDeferred = async { repo.getGroups() }
+            val proxiesDeferred = async { repo.getProxies() }
+            val providersDeferred = async { repo.getProviders() }
+            val configDeferred = async { repo.getConfig() }
+            val groupsResult = groupsDeferred.await()
+            val proxiesResult = proxiesDeferred.await()
+            val providersResult = providersDeferred.await()
+            val mode = configDeferred.await().getOrNull()?.mode?.lowercase().orEmpty()
             // 协程被 cancel 后 HTTP 响应仍可能已读完，二次校验 repo identity 防止把旧 client
             // 的结果写到当前 repo 已切换后的 UI
             if (repository !== repo) return@launch

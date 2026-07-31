@@ -349,10 +349,9 @@ class HomeViewModel(
                 .filterValues { !it.vehicleType.equals(VEHICLE_TYPE_COMPATIBLE, ignoreCase = true) }
                 .map { (fallbackName, provider) -> provider.name.ifBlank { fallbackName } }
             if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return@launch
-            names.forEach { name ->
-                repo.updateProvider(name)
-                if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return@launch
-            }
+            // 各 provider 拉取彼此独立，串行会把多源订阅的刷新耗时叠成总和
+            names.map { name -> async { repo.updateProvider(name) } }.awaitAll()
+            if (!isCurrentProviderTrafficRequest(repo, subscriptionId, requestId)) return@launch
             loadProviderTrafficSnapshot(repo, subscriptionId, requestId)
         }
     }
