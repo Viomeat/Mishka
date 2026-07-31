@@ -172,10 +172,12 @@ class MihomoRunner(private val context: Context) {
                     RootHelper.killMihomoByName(tunDevice)
                 }
             } else {
-                ProcessHelper.nativeKill(childPid)
-                try {
-                    ProcessHelper.nativeWaitpid(childPid)
-                } catch (_: Exception) {
+                ProcessHelper.nativeKill(childPid, force = false)
+                // SIGTERM 后 mihomo 要关 TUN、断全部连接；等不到就升级，绝不无限期等
+                if (ProcessHelper.nativeWaitpid(childPid, GRACEFUL_STOP_TIMEOUT_MS) < 0) {
+                    Log.w(TAG, "mihomo pid=$childPid ignored SIGTERM, escalating to SIGKILL")
+                    ProcessHelper.nativeKill(childPid, force = true)
+                    ProcessHelper.nativeWaitpid(childPid, FORCE_STOP_TIMEOUT_MS)
                 }
             }
             childPid = -1
@@ -306,13 +308,7 @@ class MihomoRunner(private val context: Context) {
         }
     }
 
-    private fun isProcessAlive(pid: Int): Boolean {
-        return try {
-            File("/proc/$pid").exists()
-        } catch (_: Exception) {
-            false
-        }
-    }
+    private fun isProcessAlive(pid: Int): Boolean = ProcessHelper.nativeIsAlive(pid)
 
     private fun getMihomoBinary(): File? {
         val nativeDir = context.applicationInfo.nativeLibraryDir
@@ -326,5 +322,8 @@ class MihomoRunner(private val context: Context) {
 
         /** waitForReady 每几轮（每轮 500ms）做一次判活 */
         private const val LIVENESS_CHECK_EVERY = 4
+
+        private const val GRACEFUL_STOP_TIMEOUT_MS = 3000
+        private const val FORCE_STOP_TIMEOUT_MS = 500
     }
 }

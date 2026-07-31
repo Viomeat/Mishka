@@ -90,24 +90,69 @@ Java_top_yukonga_mishka_service_ProcessHelper_nativeForkExec(
 }
 
 /**
- * 向子进程发送 SIGTERM 信号。
+ * waitpid 的 EINTR 重试包装。裸 waitpid 被信号打断时返回 -1 而 status 保持初值 0，
+ * WIFEXITED(0) 为真、WEXITSTATUS(0) 为 0，会把「被打断」误报成「正常退出」。
+ */
+static pid_t waitpid_eintr(pid_t pid, int *status, int options) {
+    pid_t r;
+    do {
+        r = waitpid(pid, status, options);
+    } while (r < 0 && errno == EINTR);
+    return r;
+}
+
+/**
+ * 向子进程发送信号：force 为 SIGKILL，否则 SIGTERM。
  */
 JNIEXPORT void JNICALL
 Java_top_yukonga_mishka_service_ProcessHelper_nativeKill(
-        JNIEnv *env, jclass clazz, jint pid) {
+        JNIEnv *env, jclass clazz, jint pid, jboolean force) {
     if (pid > 0) {
-        LOGI("killing pid=%d", pid);
-        kill(pid, SIGTERM);
+        int sig = force ? SIGKILL : SIGTERM;
+        LOGI("killing pid=%d sig=%d", pid, sig);
+        kill((pid_t) pid, sig);
     }
 }
 
 /**
- * 等待子进程结束。
+ * 判活兼收割。**不能用 /proc 判活**：mihomo 是本进程 fork 的亲生子，退出后进入僵尸态，
+ * 而僵尸的 /proc/<pid> 依然存在——除非恰好有别的线程 waitpid(-1) 把它收走，
+ * 否则崩溃检测永远认为它还活着。WNOHANG 顺手把僵尸收掉。
+ */
+JNIEXPORT jboolean JNICALL
+Java_top_yukonga_mishka_service_ProcessHelper_nativeIsAlive(
+        JNIEnv *env, jclass clazz, jint pid) {
+    if (pid <= 0) return JNI_FALSE;
+    int status = 0;
+    // 0：仍在运行；pid：刚收割掉；-1(ECHILD)：非本进程子进程或已被别处收割
+    return waitpid_eintr((pid_t) pid, &status, WNOHANG) == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+/**
+ * 等待子进程结束，最多 timeoutMs。返回退出码；被信号终止返回 128+signo；超时或非本进程
+ * 子进程返回 -1。**不能无限期等**：调用点在 Service.onDestroy 的主线程上，而 mihomo 收
+ * SIGTERM 后要关 TUN、断全部连接，卡住就是 ANR。
  */
 JNIEXPORT jint JNICALL
 Java_top_yukonga_mishka_service_ProcessHelper_nativeWaitpid(
-        JNIEnv *env, jclass clazz, jint pid) {
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        JNIEnv *env, jclass clazz, jint pid, jint timeoutMs) {
+    if (pid <= 0) return -1;
+    const long stepUs = 10 * 1000;
+    long remainingUs = (long) timeoutMs * 1000;
+    for (;;) {
+        int status = 0;
+        pid_t r = waitpid_eintr((pid_t) pid, &status, WNOHANG);
+        if (r == (pid_t) pid) {
+            if (WIFEXITED(status)) return WEXITSTATUS(status);
+            if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+            return -1;
+        }
+        if (r < 0) return -1;
+        if (remainingUs <= 0) {
+            LOGE("waitpid pid=%d timed out after %dms", pid, timeoutMs);
+            return -1;
+        }
+        usleep(stepUs);
+        remainingUs -= stepUs;
+    }
 }

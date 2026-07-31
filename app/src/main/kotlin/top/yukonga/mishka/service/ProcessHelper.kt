@@ -17,9 +17,15 @@ object ProcessHelper {
      */
     external fun nativeForkExec(binary: String, args: Array<String>, workDir: String, logFile: String? = null): Int
 
-    /** 发送 SIGTERM */
-    external fun nativeKill(pid: Int)
+    /** 发送信号：[force] 为 SIGKILL，否则 SIGTERM */
+    external fun nativeKill(pid: Int, force: Boolean)
 
-    /** 等待子进程结束 */
-    external fun nativeWaitpid(pid: Int): Int
+    /**
+     * 判活。走 waitpid(WNOHANG) 而非 `/proc`——mihomo 是本进程 fork 的亲生子，
+     * 退出后成僵尸，僵尸的 `/proc/<pid>` 仍在。顺带收割。
+     */
+    external fun nativeIsAlive(pid: Int): Boolean
+
+    /** 等待子进程结束，最多 [timeoutMs]。返回退出码；被信号终止返回 128+signo；超时返回 -1 */
+    external fun nativeWaitpid(pid: Int, timeoutMs: Int): Int
 }
