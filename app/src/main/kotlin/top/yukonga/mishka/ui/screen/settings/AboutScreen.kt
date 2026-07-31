@@ -90,7 +90,9 @@ fun AboutScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val lazyListState = rememberLazyListState()
 
-    val scrollProgress by remember {
+    // 滚动进度是帧率级 State：保持 State 形式，读点限制在 topBar 与各 graphicsLayer，
+    // 组合期以值读取会让整个 AboutContent 每帧重组
+    val scrollProgressState = remember {
         derivedStateOf {
             when {
                 lazyListState.firstVisibleItemIndex > 0 -> 1f
@@ -106,14 +108,15 @@ fun AboutScreen(
             }
         }
     }
+    // 布尔/夹紧后再 derive，等值去重让顶栏只在阈值区间内重组
+    val heroCollapsed by remember { derivedStateOf { scrollProgressState.value == 1f } }
+    val titleAlpha by remember {
+        derivedStateOf { ((scrollProgressState.value - 0.35f) / 0.65f).coerceIn(0f, 1f) }
+    }
 
     val backdrop = rememberBlurBackdrop()
-    val blurActive = backdrop != null && scrollProgress == 1f
-    val barColor = if (blurActive) {
-        Color.Transparent
-    } else {
-        if (scrollProgress == 1f) colorScheme.surface else Color.Transparent
-    }
+    val blurActive = backdrop != null && heroCollapsed
+    val barColor = if (heroCollapsed && !blurActive) colorScheme.surface else Color.Transparent
 
     Scaffold(
         topBar = {
@@ -123,9 +126,7 @@ fun AboutScreen(
                     title = stringResource(R.string.about_title),
                     scrollBehavior = scrollBehavior,
                     color = barColor,
-                    titleColor = colorScheme.onSurface.copy(
-                        alpha = ((scrollProgress - 0.35f) / 0.65f).coerceIn(0f, 1f),
-                    ),
+                    titleColor = colorScheme.onSurface.copy(alpha = titleAlpha),
                     defaultWindowInsetsPadding = false,
                     navigationIcon = {
                         val layoutDirection = LocalLayoutDirection.current
@@ -152,7 +153,7 @@ fun AboutScreen(
                 innerPadding = innerPadding,
                 scrollBehavior = scrollBehavior,
                 lazyListState = lazyListState,
-                scrollProgress = scrollProgress,
+                scrollProgress = { scrollProgressState.value },
                 mihomoVersion = mihomoVersion,
                 onOpenUrl = onOpenUrl,
             )
@@ -165,7 +166,7 @@ private fun AboutContent(
     innerPadding: PaddingValues,
     scrollBehavior: ScrollBehavior,
     lazyListState: LazyListState,
-    scrollProgress: Float,
+    scrollProgress: () -> Float,
     mihomoVersion: String,
     onOpenUrl: (String) -> Unit,
 ) {
@@ -200,9 +201,10 @@ private fun AboutContent(
 
     var logoHeightDp by remember { mutableStateOf(300.dp) }
 
-    val versionCodeProgress = ((scrollProgress - 0.05f) / 0.15f).coerceIn(0f, 1f)
-    val projectNameProgress = ((scrollProgress - 0.20f) / 0.15f).coerceIn(0f, 1f)
-    val iconProgress = ((scrollProgress - 0.35f) / 0.15f).coerceIn(0f, 1f)
+    // 各段淡出进度在 graphicsLayer 内计算，读点全部落在绘制阶段
+    val versionCodeProgress = { ((scrollProgress() - 0.05f) / 0.15f).coerceIn(0f, 1f) }
+    val projectNameProgress = { ((scrollProgress() - 0.20f) / 0.15f).coerceIn(0f, 1f) }
+    val iconProgress = { ((scrollProgress() - 0.35f) / 0.15f).coerceIn(0f, 1f) }
 
     val scrollPadding = PaddingValues(
         top = innerPadding.calculateTopPadding(),
@@ -221,7 +223,7 @@ private fun AboutContent(
         bgModifier = Modifier.layerBackdrop(backdrop),
         isFullSize = true,
         effectBackground = effectBackground,
-        alpha = { 1f - scrollProgress },
+        alpha = { 1f - scrollProgress() },
     ) {
         Column(
             modifier = Modifier
@@ -242,9 +244,10 @@ private fun AboutContent(
                     .size(100.dp)
                     .clipToBounds()
                     .graphicsLayer {
-                        alpha = 1 - iconProgress
-                        scaleX = 1 - (iconProgress * 0.05f)
-                        scaleY = 1 - (iconProgress * 0.05f)
+                        val p = iconProgress()
+                        alpha = 1 - p
+                        scaleX = 1 - (p * 0.05f)
+                        scaleY = 1 - (p * 0.05f)
                     },
             ) {
                 Image(
@@ -271,9 +274,10 @@ private fun AboutContent(
                 modifier = Modifier
                     .padding(top = 12.dp, bottom = 5.dp)
                     .graphicsLayer {
-                        alpha = 1 - projectNameProgress
-                        scaleX = 1 - (projectNameProgress * 0.05f)
-                        scaleY = 1 - (projectNameProgress * 0.05f)
+                        val p = projectNameProgress()
+                        alpha = 1 - p
+                        scaleX = 1 - (p * 0.05f)
+                        scaleY = 1 - (p * 0.05f)
                     }
                     .then(
                         if (blurEnabled) {
@@ -296,9 +300,10 @@ private fun AboutContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer {
-                        alpha = 1 - versionCodeProgress
-                        scaleX = 1 - (versionCodeProgress * 0.05f)
-                        scaleY = 1 - (versionCodeProgress * 0.05f)
+                        val p = versionCodeProgress()
+                        alpha = 1 - p
+                        scaleX = 1 - (p * 0.05f)
+                        scaleY = 1 - (p * 0.05f)
                     },
                 color = colorScheme.onSurfaceVariantSummary,
                 text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",

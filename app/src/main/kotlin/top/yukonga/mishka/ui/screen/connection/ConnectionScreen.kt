@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -127,11 +128,14 @@ fun ConnectionScreen(
         }
     }
 
-    // 宽屏用固定的 SmallTopAppBar（永不折叠），搜索框顶部间距恒为 0；仅手机可折叠大标题栏才随折叠动态收缩
+    // 宽屏用固定的 SmallTopAppBar（永不折叠），搜索框顶部间距恒为 0；仅手机可折叠大标题栏才随折叠动态收缩。
+    // collapsedFraction 是帧率级 State，走 lambda 由消费方在布局阶段读，组合期读会让顶栏每帧重组
     val isWideScreen = rememberIsWideScreen()
-    val dynamicTopPadding by remember(isWideScreen) {
-        derivedStateOf {
-            if (isWideScreen) 0.dp else 12.dp * (1f - scrollBehavior.state.collapsedFraction)
+    val dynamicTopPadding: () -> Dp = remember(isWideScreen, scrollBehavior) {
+        if (isWideScreen) {
+            { 0.dp }
+        } else {
+            { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
         }
     }
 
