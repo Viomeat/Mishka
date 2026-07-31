@@ -27,7 +27,6 @@ import top.yukonga.mishka.domain.model.MihomoConfig
 import top.yukonga.mishka.domain.model.MihomoVersion
 import top.yukonga.mishka.domain.model.ProvidersResponse
 import top.yukonga.mishka.domain.model.ProxiesResponse
-import top.yukonga.mishka.domain.model.ProxyNode
 import top.yukonga.mishka.domain.model.RuleProvidersResponse
 import top.yukonga.mishka.domain.model.RulesResponse
 

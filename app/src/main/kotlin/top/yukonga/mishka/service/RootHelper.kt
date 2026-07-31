@@ -61,7 +61,7 @@ object RootHelper {
     fun startAsRoot(binary: String, args: Array<String>, workDir: String, logFile: String): Int {
         val argsStr = args.joinToString(" ") { escapeShellSingleQuoted(it) }
         val command = "cd ${escapeShellSingleQuoted(workDir)} || exit 1; " +
-            "${escapeShellSingleQuoted(binary)} $argsStr > ${escapeShellSingleQuoted(logFile)} 2>&1 & echo \$!"
+                "${escapeShellSingleQuoted(binary)} $argsStr > ${escapeShellSingleQuoted(logFile)} 2>&1 & echo \$!"
         Log.i(TAG, "Starting as root: ${redactArgs(args)}")
         return try {
             val process = ProcessBuilder("su", "-c", command)

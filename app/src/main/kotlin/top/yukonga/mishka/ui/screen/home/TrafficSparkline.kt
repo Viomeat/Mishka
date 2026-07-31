@@ -82,7 +82,19 @@ internal fun TrafficSparkline(
                     val progress = (1f - (seq - scroll.value)).coerceIn(0f, 1f)
                     val maxValue = scale.value
                     // 下载在下层：其覆盖面积通常更大，压在上传曲线之下
-                    drawSeries(downLine, downFill, down, maxValue, step, progress, chartTop, baseline, downloadColor, downloadFillBrush, strokeWidth)
+                    drawSeries(
+                        downLine,
+                        downFill,
+                        down,
+                        maxValue,
+                        step,
+                        progress,
+                        chartTop,
+                        baseline,
+                        downloadColor,
+                        downloadFillBrush,
+                        strokeWidth
+                    )
                     drawSeries(upLine, upFill, up, maxValue, step, progress, chartTop, baseline, uploadColor, uploadFillBrush, strokeWidth)
                 }
             },

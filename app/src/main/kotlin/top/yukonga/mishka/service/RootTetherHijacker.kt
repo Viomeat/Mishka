@@ -5,7 +5,6 @@ import top.yukonga.mishka.service.RootTetherHijacker.verifyClean
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.NetworkInterface
-import java.util.concurrent.TimeUnit
 
 /**
  * ROOT 模式下的热点流量处置。
@@ -415,7 +414,7 @@ object RootTetherHijacker {
             // 然后才能 -X DIVERT——被引用的 chain 不能直接删
             appendLine(
                 "$bin -t mangle -S PREROUTING 2>/dev/null | grep -- '-j $CHAIN_NAME' | " +
-                    "sed 's/^-A/-D/' | while read -r r; do $bin -t mangle \$r 2>/dev/null; done"
+                        "sed 's/^-A/-D/' | while read -r r; do $bin -t mangle \$r 2>/dev/null; done"
             )
             for (chain in listOf(CHAIN_NAME, CHAIN_DIVERT_NAME)) {
                 appendLine("$bin -t mangle -F $chain 2>/dev/null")

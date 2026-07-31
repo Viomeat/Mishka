@@ -34,7 +34,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,10 +48,10 @@ import top.yukonga.mishka.ui.component.SearchBox
 import top.yukonga.mishka.ui.component.SearchPager
 import top.yukonga.mishka.ui.component.SearchResultStatusEffect
 import top.yukonga.mishka.ui.component.SearchStatus
-import top.yukonga.mishka.ui.component.rememberSearchBarTopPadding
-import top.yukonga.mishka.ui.component.rememberSearchScreenStatus
 import top.yukonga.mishka.ui.component.blur.BlurredBar
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
+import top.yukonga.mishka.ui.component.rememberSearchBarTopPadding
+import top.yukonga.mishka.ui.component.rememberSearchScreenStatus
 import top.yukonga.mishka.ui.platform.AppIcon
 import top.yukonga.mishka.ui.platform.getPlainText
 import top.yukonga.mishka.ui.platform.setPlainText

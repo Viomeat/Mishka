@@ -30,6 +30,7 @@ import top.yukonga.mishka.platform.ProxyServiceStatus
 import top.yukonga.mishka.platform.ProxyState
 import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.platform.TunMode
+import top.yukonga.mishka.service.MishkaRootService.Companion.EXTRA_SUBMODE
 import top.yukonga.mishka.viewmodel.AppProxyMode
 import java.io.File
 import kotlin.time.Clock
@@ -62,6 +63,7 @@ class MishkaRootService : Service() {
     private val dynamicNotification by lazy {
         DynamicNotificationManager(this, scope, MishkaApplication.instance.connectionManager)
     }
+
     // 取 Koin 单例而非自建：store 的内存值是权威值，自建实例读不到 UI 侧刚落的设置
     private val overrideStore: OverrideJsonStore by inject()
     private var monitorJob: Job? = null

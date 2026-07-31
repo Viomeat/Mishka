@@ -50,8 +50,10 @@
             android:theme="@style/Theme.Mishka.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
+
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+
                 <data android:scheme="clash" />
                 <data android:scheme="clashmeta" />
                 <data android:host="install-config" />

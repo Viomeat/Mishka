@@ -104,7 +104,7 @@ Java_top_yukonga_mishka_service_ProcessHelper_nativeForkExec(
         result = pid;
     }
 
-cleanup:
+    cleanup:
     if (argv != NULL) {
         for (int i = 0; argv[i] != NULL; i++) {
             free(argv[i]);

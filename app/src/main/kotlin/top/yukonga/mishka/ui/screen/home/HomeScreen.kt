@@ -70,9 +70,9 @@ fun HomeScreen(
     var showSubscriptionTraffic by rememberSaveable { mutableStateOf(false) }
     var showSpeedDetail by rememberSaveable { mutableStateOf(false) }
     val topConnectionRates by (
-        viewModel?.topConnectionRates?.collectAsStateWithLifecycle()
-            ?: remember { mutableStateOf(null) }
-        )
+            viewModel?.topConnectionRates?.collectAsStateWithLifecycle()
+                ?: remember { mutableStateOf(null) }
+            )
 
     // WS 订阅只在详情打开期间存续，理由见 startConnectionRateTracking
     if (showSpeedDetail) {

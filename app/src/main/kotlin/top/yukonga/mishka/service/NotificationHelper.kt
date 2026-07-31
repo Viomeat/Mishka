@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import top.yukonga.mishka.MainActivity
 import top.yukonga.mishka.R
+import top.yukonga.mishka.service.NotificationHelper.PROFILE_PROGRESS_ID_BASE
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

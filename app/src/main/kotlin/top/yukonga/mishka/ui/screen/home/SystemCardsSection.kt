@@ -317,8 +317,7 @@ private fun NodeCountBadge(count: Int) {
     Text(
         text = count.toString(),
         modifier = Modifier
-            .clip(RoundedCornerShape(3.dp))
-            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .squircleBackground(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f), 3.dp)
             .padding(horizontal = 4.dp, vertical = 1.dp),
         fontSize = 9.sp,
         fontWeight = FontWeight.Bold,
