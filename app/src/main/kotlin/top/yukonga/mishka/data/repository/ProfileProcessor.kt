@@ -33,7 +33,7 @@ class ConfigValidationException(message: String) : Exception(message)
 /**
  * snapshot → fetchAndValid → commit-swap 三阶段。
  * processLock 串行整个流程，[SubscriptionRepository.profileLock] 守护 DB snapshot。
- * commit 阶段必须 NonCancellable，否则文件 swap 完成 / DB 未更新会撕裂。
+ * commit 阶段必须 NonCancellable：目录 rename 换入与 DB 更新之间被打断会让两者不一致。
  */
 class ProfileProcessor(
     private val repo: SubscriptionRepositoryImpl,
@@ -53,7 +53,9 @@ class ProfileProcessor(
         uuid: String,
         isUpdate: Boolean,
         onProgress: (ImportProgress) -> Unit,
-    ) = withContext(Dispatchers.Default) {
+        // 三阶段全是阻塞磁盘操作（递归拷贝 / 递归删除 / rename），占 Default 会与 Compose
+        // 重组和 appScope 的 Room Flow 合并抢同一批 CPU 线程
+    ) = withContext(Dispatchers.IO) {
         processLock.withLock {
             val (snapshot, workDir) = repo.withProfileLock {
                 if (isUpdate) {
