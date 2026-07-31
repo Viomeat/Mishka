@@ -252,14 +252,6 @@ object ProfileFileOps {
         }
     }
 
-    fun cloneImportedToPending(context: Context, sourceUuid: String, targetUuid: String) {
-        val source = getImportedDir(context, sourceUuid)
-        val target = getPendingDir(context, targetUuid)
-        if (source.exists()) {
-            source.copyRecursively(target, overwrite = true)
-        }
-    }
-
     /** 读取订阅目录的最后修改时间（不创建目录）。目录不存在或 mtime <= 0 返回 null。 */
     fun getProfileDirLastModified(context: Context, uuid: String, pending: Boolean): Long? {
         val sub = if (pending) "pending/$uuid" else "imported/$uuid"
@@ -338,23 +330,6 @@ object ProfileFileOps {
                         source.copyTo(target, overwrite = false)
                     } catch (_: Exception) {
                     }
-                }
-            }
-        }
-    }
-
-    /**
-     * 校验成功后，收集订阅目录中新下载的 GeoIP 文件到共享目录。
-     */
-    fun collectGeodataFiles(context: Context, subscriptionDir: File) {
-        val geodataDir = getGeodataDir(context)
-        for (fileName in GEODATA_FILES) {
-            val file = File(subscriptionDir, fileName)
-            if (file.exists() && !java.nio.file.Files.isSymbolicLink(file.toPath())) {
-                try {
-                    val target = File(geodataDir, fileName)
-                    file.copyTo(target, overwrite = true)
-                } catch (_: Exception) {
                 }
             }
         }

@@ -52,9 +52,6 @@ interface SubscriptionRepository {
     /** 删除订阅（清 Imported/Pending/Selection）。 */
     suspend fun delete(uuid: String)
 
-    /** 复制已导入订阅为新的 Pending（File 类型），返回新 uuid。 */
-    suspend fun clone(uuid: String): String
-
     /**
      * 校验编辑中的 pending 字段（invalid 抛 ImportError），返回是否为「需重新拉取的 URL 订阅」。
      * true → 调用方走 ProfileProcessor.apply 重新 fetch；false → 调用 [commitPendingProfile] 直接提交。

@@ -5,7 +5,10 @@ import androidx.compose.ui.res.stringResource
 import top.yukonga.mishka.R
 import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 
-// 主题枚举 → 用户可见名称的唯一映射；设置入口摘要与主题设置页共用，避免两处 when 漂移
+// 主题枚举 → 用户可见名称的唯一映射，避免多处 when 漂移
+
+/** colorMode 的取值，顺序即选项列表顺序：0 跟随系统 / 1 浅色 / 2 深色 */
+val ThemeColorModes = listOf(0, 1, 2)
 
 @Composable
 fun themeColorModeLabel(colorMode: Int): String = stringResource(

@@ -74,9 +74,6 @@ class MihomoApiClient(
     suspend fun getGroups(): GroupsResponse =
         client.get("$baseUrl/group").body()
 
-    suspend fun getProxy(name: String): ProxyNode =
-        client.get("$baseUrl/proxies/$name").body()
-
     suspend fun selectProxy(group: String, name: String) {
         val response: HttpResponse = client.put("$baseUrl/proxies/$group") {
             contentType(ContentType.Application.Json)

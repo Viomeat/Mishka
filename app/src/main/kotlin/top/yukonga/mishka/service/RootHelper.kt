@@ -187,25 +187,6 @@ object RootHelper {
         }
     }
 
-    /**
-     * 以 root 身份执行 shell 命令，返回 exit code；超时/异常返回 -1。
-     * stderr 合并到 stdout 但不返回，仅用于 exit code 判定（如 `ip rule del` 循环直到非零）。
-     */
-    fun runAsRootReturnCode(command: String, timeoutSeconds: Long = 3): Int {
-        return try {
-            val process = ProcessBuilder("su", "-c", command)
-                .redirectErrorStream(true)
-                .start()
-            val exited = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            if (!exited) {
-                process.destroyForcibly()
-                return -1
-            }
-            process.exitValue()
-        } catch (_: Exception) {
-            -1
-        }
-    }
 
     /**
      * 清理残留的 mihomo 进程（孤儿进程，非当前 App 子进程），可选带 TUN 清理。

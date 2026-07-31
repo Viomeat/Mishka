@@ -223,7 +223,6 @@
     <string name="error_import_failed">匯入失敗: %1$s</string>
     <string name="error_update_failed">更新失敗: %1$s</string>
     <string name="error_save_failed">儲存失敗: %1$s</string>
-    <string name="error_duplicate_failed">複製失敗: %1$s</string>
     <string name="error_validation_failed">設定檔驗證失敗: %1$s</string>
     <string name="error_import_empty_body">訂閱回傳內容為空</string>
     <string name="error_import_invalid_scheme">URL 必須以 http:// 或 https:// 開頭：%1$s</string>

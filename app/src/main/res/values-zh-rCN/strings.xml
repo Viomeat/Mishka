@@ -223,7 +223,6 @@
     <string name="error_import_failed">导入失败: %1$s</string>
     <string name="error_update_failed">更新失败: %1$s</string>
     <string name="error_save_failed">保存失败: %1$s</string>
-    <string name="error_duplicate_failed">复制失败: %1$s</string>
     <string name="error_validation_failed">配置校验失败: %1$s</string>
     <string name="error_import_empty_body">订阅返回内容为空</string>
     <string name="error_import_invalid_scheme">URL 必须以 http:// 或 https:// 开头：%1$s</string>

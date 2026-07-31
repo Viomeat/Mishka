@@ -27,7 +27,7 @@ import top.yukonga.mishka.util.describe
 /**
  * 当前进行中的订阅 Pipeline 操作类型，驱动 Dialog 标题与错误文案。
  */
-enum class ProfileOperation { Import, Update, Edit, Duplicate }
+enum class ProfileOperation { Import, Update, Edit }
 
 @Immutable
 data class SubscriptionUiState(
@@ -245,19 +245,6 @@ class SubscriptionViewModel(
                 repository.commitPendingProfile(uuid)
             }
             onComplete()
-        }
-    }
-
-    /**
-     * 复制已导入订阅：create Pending(File) → cloneFiles imported→pending → 写 pending → apply。
-     */
-    fun duplicateSubscription(uuid: String) {
-        runPipeline(ProfileOperation.Duplicate, errorKey = R.string.error_duplicate_failed) {
-            val newUuid = repository.clone(uuid)
-            pendingOnFailure(newUuid) {
-                fileManager.cloneFiles(uuid, newUuid)
-                processor.apply(newUuid, ::reportProgress)
-            }
         }
     }
 

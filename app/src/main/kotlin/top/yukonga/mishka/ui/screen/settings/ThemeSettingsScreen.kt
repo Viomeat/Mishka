@@ -48,10 +48,12 @@ import top.yukonga.mishka.ui.theme.FloatingBottomBarStyle
 import top.yukonga.mishka.ui.theme.MaxDensityScale
 import top.yukonga.mishka.ui.theme.MinDensityScale
 import top.yukonga.mishka.ui.theme.ThemeAccentColor
+import top.yukonga.mishka.ui.theme.ThemeColorModes
 import top.yukonga.mishka.ui.theme.ThemeConfig
 import top.yukonga.mishka.ui.theme.ThemePaletteStyles
 import top.yukonga.mishka.ui.theme.label
 import top.yukonga.mishka.ui.theme.normalizeDensityScale
+import top.yukonga.mishka.ui.theme.themeColorModeLabel
 import top.yukonga.mishka.ui.theme.writeThemeConfig
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -118,11 +120,7 @@ fun ThemeSettingsScreen(
         showDensityScaleDialog = true
     }
 
-    val themeItems = listOf(
-        stringResource(R.string.settings_theme_system),
-        stringResource(R.string.settings_theme_light),
-        stringResource(R.string.settings_theme_dark),
-    )
+    val themeItems = ThemeColorModes.map { mode -> themeColorModeLabel(mode) }
     val paletteStyles = ThemePaletteStyles
     val paletteItems = paletteStyles.map { style -> style.label() }
     val selectedPaletteIndex = paletteStyles.indexOf(themeConfig.paletteStyle).coerceAtLeast(0)

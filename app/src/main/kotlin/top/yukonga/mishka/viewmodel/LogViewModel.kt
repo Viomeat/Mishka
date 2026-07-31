@@ -106,12 +106,6 @@ class LogViewModel : ViewModel() {
         logsDirty = true
     }
 
-    fun setLevel(level: String) {
-        _uiState.value = _uiState.value.copy(level = level)
-        resetLogs()
-        startLogCollection()
-    }
-
     fun clearLogs() {
         resetLogs()
     }

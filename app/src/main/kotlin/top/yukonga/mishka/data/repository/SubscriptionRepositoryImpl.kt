@@ -319,29 +319,6 @@ class SubscriptionRepositoryImpl(
         }
     }
 
-    /**
-     * 复制已导入订阅为新的 Pending（File 类型，无 source URL）。
-     */
-    @OptIn(ExperimentalUuidApi::class)
-    override suspend fun clone(uuid: String): String = profileLock.withLock {
-        val imported = importedDao.queryByUUID(uuid)
-            ?: throw IllegalArgumentException("Profile $uuid not found")
-        val newUuid = Uuid.random().toString()
-        pendingDao.insert(
-            PendingEntity(
-                uuid = newUuid,
-                name = imported.name,
-                type = ProfileType.File,
-                source = "",
-                userAgent = imported.userAgent,
-                ageSecretKey = imported.ageSecretKey,
-                interval = 0,
-                createdAt = Clock.System.now().toEpochMilliseconds(),
-            )
-        )
-        newUuid
-    }
-
     // === 活跃配置管理 ===
 
     // uuid 同步写：调用方紧接着的 restartProxy 需要立刻读到新值，不能延后到下一个调度 tick

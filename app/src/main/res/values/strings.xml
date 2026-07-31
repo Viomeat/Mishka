@@ -225,7 +225,6 @@
     <string name="error_import_failed">Import failed: %1$s</string>
     <string name="error_update_failed">Update failed: %1$s</string>
     <string name="error_save_failed">Save failed: %1$s</string>
-    <string name="error_duplicate_failed">Duplicate failed: %1$s</string>
     <string name="error_validation_failed">Validation failed: %1$s</string>
     <string name="error_import_empty_body">The subscription returned an empty response</string>
     <string name="error_import_invalid_scheme">URL must start with http:// or https://: %1$s</string>
