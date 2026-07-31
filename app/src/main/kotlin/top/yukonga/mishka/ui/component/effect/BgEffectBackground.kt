@@ -8,9 +8,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
@@ -45,6 +49,8 @@ fun BgEffectBackground(
 
         val colorStage = remember { Animatable(0f) }
 
+        val currentAlpha by rememberUpdatedState(alpha)
+
         LaunchedEffect(dynamicBackground, preset) {
             if (!dynamicBackground) return@LaunchedEffect
             val animatesColors = preset.colors1 !== preset.colors2 || preset.colors2 !== preset.colors3
@@ -52,6 +58,9 @@ fun BgEffectBackground(
 
             var targetStage = floor(colorStage.value) + 1f
             while (isActive) {
+                // 不可见时挂起色阶推进：draw 里读 colorStage，spring 每帧都会让它重绘。
+                // snapshotFlow 在协程里读 alpha，不像 by 解包那样把它带进组合期
+                snapshotFlow { currentAlpha() > 0f }.first { it }
                 delay((preset.colorInterpPeriod * 500).toLong())
                 colorStage.animateTo(
                     targetValue = targetStage,

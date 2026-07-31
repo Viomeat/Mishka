@@ -159,6 +159,14 @@ private class BgEffectNode(
         drawRect(surface)
         if (effectBackground) {
             val alphaValue = alpha()
+            // alpha 归零后画面完全不可见，帧循环却仍以 60fps 空转（About 页滚到底即如此）。
+            // alpha 由 lambda 在 draw 阶段读，这里是唯一能感知它的时机
+            if (alphaValue <= 0f) {
+                animationJob?.cancel()
+                animationJob = null
+            } else if (playing && animationJob == null) {
+                startAnimation()
+            }
             if (alphaValue > 0f) {
                 val drawHeight = if (isFullSize) size.height * 0.8f else size.height * 0.5f
 
