@@ -201,7 +201,7 @@ class HomeViewModel(
 
     init {
         // 状态机仅维护 UI 状态字段（isStarting / isRunning / startTime / mihomoPid / errorMessage）
-        // mihomo 客户端实例由 connectionManager 统一持有，HomeViewModel 不再自建
+        // mihomo 客户端实例由 connectionManager 统一持有，HomeViewModel 不自建
         viewModelScope.launch {
             serviceController.status.collect { status ->
                 when (status.state) {
@@ -762,7 +762,7 @@ class HomeViewModel(
     }
 
     /**
-     * 仅 cancel 自身订阅的流；不再 close repository（owner 是 connectionManager）。
+     * 仅 cancel 自身订阅的流；不 close repository（owner 是 connectionManager）。
      * 当 repository StateFlow 切回 null 时由收集回调调用。
      */
     private fun disconnectStreams() {

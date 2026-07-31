@@ -166,7 +166,7 @@ object ProfileFileOps {
         if (pending.exists()) pending.deleteRecursively()
     }
 
-    /** 旧 ROOT 模式可能留下 root:root 文件，Kotlin 删不掉时走 su 兜底。 */
+    /** 目录里可能有 root:root 文件，Kotlin 无权限 unlink 时走 su 兜底。 */
     private fun removeMaybeRootOwned(dir: File) {
         if (dir.exists() && !dir.deleteRecursively()) RootHelper.rmRfAsRoot(dir.absolutePath)
     }

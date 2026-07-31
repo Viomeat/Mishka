@@ -33,7 +33,7 @@ object RootTproxyApplier {
     internal const val DNS_PORT = 1053
 
     // ========== mihomo 出站自绕方式 ==========
-    // 历史曾想用 mihomo `routing-mark` + `-m mark -j RETURN` 做精确放行，但 Android Netd
+    // **不用** mihomo 的 `routing-mark` + `-m mark -j RETURN` 做精确放行：Android Netd
     // 用 fwmark 低 16 位编码 netId（见 `ip rule` 里的 `fwmark 0x1006d/0x1ffff lookup wlan0`），
     // mihomo 带任何 SO_MARK 都会被当成不存在的 netId，命中 legacy_system 表（无默认路由）
     // → mihomo 出站全部 network unreachable。
@@ -315,9 +315,8 @@ object RootTproxyApplier {
         sb.appendLine()
         sb.appendLine("# === 7. 挂主链 ===")
         // DIVERT 已在 CHAIN_PRE 内部（intranet RETURN 之后、TPROXY 之前），外层只挂 CHAIN_PRE
-        // 顶层 jump 不打 comment：teardown 的 `-D PREROUTING -j <chain>` 需要与 apply 时的
-        // 规则精确匹配，带 comment 的规则需要 `-D` 也带 comment 才能删掉；旧版遗留规则没有
-        // comment，这样设计避免升级场景的跨版本不兼容
+        // 顶层 jump 不打 comment：teardown 的 `-D PREROUTING -j <chain>` 必须与 apply 时的
+        // 规则逐参数精确匹配，一旦带上 comment，`-D` 也得原样带同一条 comment 才删得掉
         for (t in tables) {
             sb.appendLine("$t -t mangle -I PREROUTING -j $CHAIN_PRE")
             sb.appendLine("$t -t mangle -I OUTPUT -j $CHAIN_OUT")
@@ -342,7 +341,7 @@ object RootTproxyApplier {
         }
         sb.appendLine("# === 卸主链 (没挂过 -D 返回非零，忽略) ===")
         for (t in TABLES) {
-            // 兼容旧版本：旧版在 PREROUTING 单独挂过 DIVERT，这里留一条兜底清理
+            // 兜底：DIVERT 若被单独挂在 PREROUTING（不是本实现的挂法）也一并卸掉，没挂过只返回非零
             sb.appendLine("$t -t mangle -D PREROUTING -p tcp -m socket -j $CHAIN_DIVERT 2>/dev/null")
             sb.appendLine("$t -t mangle -D PREROUTING -j $CHAIN_PRE 2>/dev/null")
             sb.appendLine("$t -t mangle -D OUTPUT -j $CHAIN_OUT 2>/dev/null")

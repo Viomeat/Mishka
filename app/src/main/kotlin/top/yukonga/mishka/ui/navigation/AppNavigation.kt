@@ -747,7 +747,7 @@ private fun MiuixFloatingNavigationBarItem(
     }
 }
 
-// === MainPagerState（参考 miuix example）===
+// === MainPagerState ===
 
 @Stable
 class MainPagerState(
@@ -820,7 +820,7 @@ fun rememberMainPagerState(
     MainPagerState(pagerState, coroutineScope)
 }
 
-// === 返回键处理（参考 miuix example）===
+// === 返回键处理 ===
 
 @Composable
 private fun MainScreenBackHandler(

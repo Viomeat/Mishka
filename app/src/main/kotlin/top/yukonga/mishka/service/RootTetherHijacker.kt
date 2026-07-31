@@ -22,8 +22,8 @@ import java.util.concurrent.TimeUnit
  * - PROXY：优先使用 mangle PREROUTING 的 `-j TPROXY` 内核态透明代理，把热点 TCP+UDP
  *   导到 mihomo 的 tproxy-port（`IP_TRANSPARENT` socket），绕开 sing-tun userspace
  *   TCP stack，延迟/吞吐接近 BYPASS。xt_TPROXY 内核模块不可用时退回到"去程+回程都
- *   `lookup 2022`"的 ip rule 对称路径（仍走 userspace stack，性能次于 TPROXY 但
- *   连接不再断，修掉了历史版本"去程进 TUN / 回程 goto 9010"的非对称 bug）。
+ *   `lookup 2022`"的 ip rule 对称路径（仍走 userspace stack，性能次于 TPROXY；**去程与
+ *   回程必须对称**，一头进 TUN 另一头 goto 出去会让连接建不起来）。
  *
  * 注意 **不能** 用 `lookup main`：Android 的 main 表没有 default route（default 分散在
  * 各 upstream 独立表 wlan0/rmnet_data0 里），命中 main 会立即丢包 → 完全无网。
@@ -357,7 +357,8 @@ object RootTetherHijacker {
 
     /**
      * 全路径清理：BYPASS ip rule + fallback ip rule + TPROXY chain & 策略路由。
-     * 两类都跑，保证从任意前置状态清理干净（例如从旧版 PROXY 升级、xt_TPROXY 时有时无）。
+     * 两类都跑，保证从任意前置状态清理干净（上次异常退出、用户改过 tether mode、
+     * xt_TPROXY 时有时无导致上次装的是另一套规则）。
      *
      * 清理后 [verifyClean] 扫关键锚点，若仍残留重试一次。仍残留则 Log.w 记录供诊断
      * （不阻止 stop 流程；与第三方模块共存被引用时内核会拒绝删，属预期）。

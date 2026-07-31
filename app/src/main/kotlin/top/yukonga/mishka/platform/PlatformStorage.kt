@@ -68,7 +68,7 @@ object StorageKeys {
 
     // attach 路径强制 re-apply 热点/TPROXY 规则开关：
     // 默认 false → 先 probe anyRulesPresent()，规则齐全则 skip re-apply（避免无谓 teardown+apply）；
-    // true → 强制 re-apply，兼容"第三方模块清掉过规则"的偏执场景，诊断用
+    // true → 强制 re-apply，覆盖"第三方模块清掉过规则"的场景，诊断用
     const val ROOT_ATTACH_FORCE_REAPPLY = "root_attach_force_reapply"
 
     // 上次启动时探测 xt_TPROXY 的结果（"true"/"false"/""），仅在 PROXY 或 ROOT TPROXY
