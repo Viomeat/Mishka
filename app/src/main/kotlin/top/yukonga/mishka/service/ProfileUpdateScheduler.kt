@@ -9,7 +9,6 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import top.yukonga.mishka.data.database.ImportedDao
 import top.yukonga.mishka.data.database.ImportedEntity
@@ -50,7 +49,7 @@ class ProfileUpdateScheduler(
 
     /** 一次性对账，完成后返回。开机 / 时间变更路径用。 */
     suspend fun reconcileNow() {
-        reconcile(importedDao.getAllFlow().first())
+        reconcile(importedDao.queryAll())
     }
 
     private fun reconcile(entities: List<ImportedEntity>) {
