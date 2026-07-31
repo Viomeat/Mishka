@@ -23,8 +23,8 @@ import top.yukonga.mishka.platform.ProxyState
  * - 不做 endpoint 比对：每次 Running 都 close + new；attach 重连复用同 endpoint 多一次
  *   重建代价 < 50ms，远小于状态机出 race 的回归成本
  *
- * 使用方式：在 [top.yukonga.mishka.MishkaApplication.onCreate] 中以 application scope 实例化，
- * 通过 application 单例对外暴露。
+ * 使用方式：由 `dataModule` 以 `single` 提供（scope 取同模块的 application 级 CoroutineScope）。
+ * `MishkaApplication.connectionManager` 只是给 Service 侧的取图入口，**任何地方都不要自己 new**。
  */
 class MihomoConnectionManager(scope: CoroutineScope) {
 

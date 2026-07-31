@@ -212,7 +212,7 @@ func fetchURL(ctx context.Context, u *url.URL, dest string, result *FetchResult,
 }
 
 // Content-Disposition 的 filename 常携带订阅名（subconverter / 机场面板惯例）。
-// mime.ParseMediaType 原生解码 RFC 5987 的 filename*=UTF-8” 扩展参数。
+// mime.ParseMediaType 原生解码 RFC 5987 的 filename*=UTF-8''<name> 扩展参数。
 func dispositionFileName(header string) string {
 	if header == "" {
 		return ""

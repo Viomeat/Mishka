@@ -54,7 +54,8 @@ fun HomeScreen(
 ) {
     val scrollBehavior = MiuixScrollBehavior()
 
-    // 高频字段独立订阅，重组仅限到相应 Section
+    // 高频字段拆成独立 Flow：1Hz 推送仍会重组 HomeScreen 本体与 LazyColumn 的 content lambda，
+    // 但只有拿到新值的那个 Section 参数变了，其余全部 skip，实际重绘收在对应 Section 内
     val speed by (viewModel?.speedState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(SpeedSnapshot()) })
     val memory by (viewModel?.memoryState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(MemorySnapshot()) })
     val systemInfo by (viewModel?.systemInfoState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(SystemInfoSnapshot()) })

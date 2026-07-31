@@ -50,7 +50,7 @@ import kotlin.uuid.Uuid
  *     → RELEASE → Imported ✓（不变）, Pending ∅
  *
  *   UPDATE（手动/自动更新）→ 直接更新 Imported
- *   DELETE → 两表都删除
+ *   DELETE → 三表都删除（imported / pending / selections）
  */
 class SubscriptionRepositoryImpl(
     private val importedDao: ImportedDao,
@@ -121,7 +121,7 @@ class SubscriptionRepositoryImpl(
     suspend fun queryPending(uuid: String): PendingEntity? = pendingDao.queryByUUID(uuid)
     suspend fun queryImported(uuid: String): ImportedEntity? = importedDao.queryByUUID(uuid)
 
-    // === 两阶段操作 ===
+    // === Pending / Imported 状态迁移 ===
 
     /**
      * 创建新的 Pending 记录。

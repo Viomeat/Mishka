@@ -121,7 +121,7 @@ object StatusColors {
         @Composable @ReadOnlyComposable
         get() = if (LocalAppDarkMode.current) Color(0xFF1A3040) else Color(0xFFE3F2FD)
 
-    // —— 内部调色板（与 Material baseline tonal palette 对齐）——
+    // —— 内部调色板。色值是手挑的，名字里的色阶只是记号，与 Material 官方色阶并不逐一对应 ——
     private val Green300Dark = Color(0xFF81C784)
     private val Green600Light = Color(0xFF4CAF50)
     private val Amber300Dark = Color(0xFFF9A825)
