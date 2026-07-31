@@ -193,9 +193,6 @@ class HomeViewModel(
     /** UI 是否在前台，由 MainActivity 的 onStart/onStop 驱动，门控各轮询循环 */
     private val uiVisible = MutableStateFlow(true)
 
-    // 订阅切换发生在代理 Starting 窗口内时挂起，等状态切到 Running 再重启（见 onActiveSubscriptionChanged）
-    private var pendingRestartOnRunning = false
-
     // 已弹过 toast 的错误消息，用于抑制同一失败的重复提示；回到 Stopped 时清空
     private var lastErrorToast: String? = null
 
@@ -223,11 +220,6 @@ class HomeViewModel(
                         )
                         startTime = if (status.startTime > 0) status.startTime else Clock.System.now().toEpochMilliseconds()
                         mihomoPid = status.mihomoPid
-                        // 启动窗口内切过订阅：此刻代理已就绪，安全地重启切到新 active（不与启动协程并发）
-                        if (pendingRestartOnRunning) {
-                            pendingRestartOnRunning = false
-                            restartProxy()
-                        }
                     }
 
                     ProxyState.Stopping -> {
@@ -649,8 +641,6 @@ class HomeViewModel(
         _memoryState.value = MemorySnapshot()
         _systemInfoState.value = SystemInfoSnapshot()
         _uptimeState.value = -1L
-        // 代理已停止/出错：丢弃挂起的切换重启，避免下次启动到 Running 时触发意外重启
-        pendingRestartOnRunning = false
     }
 
     fun startProxy() {
@@ -673,27 +663,17 @@ class HomeViewModel(
     /**
      * active 订阅变更后调用（切换或删除）：把运行中的代理切到新 active 订阅。
      * 删除路径必须等 DB 与文件落定后才调，见 `SubscriptionViewModel.removeSubscription`。
-     * 基于权威的 `serviceController.status`
-     * （ProxyServiceBridge）状态决策，而非滞后的 `uiState.isRunning`——后者在代理 Starting
-     * 窗口（启动后约 10s）内仍为 false，会漏掉重启导致「界面显示新订阅、代理仍跑旧订阅」。
-     * Starting/Stopping 过渡态先记挂起标志，待状态切到 Running 再重启，避免在 Service 内与
-     * 启动中的协程并发重启产生竞态。
+     * 重启时机的决策（权威状态、过渡态挂起）收在 [ProxyServiceController.restartWhenReady]。
      */
     fun onActiveSubscriptionChanged() {
-        val state = serviceController.status.value.state
         // 删光最后一条订阅时没有新配置可切，restart 只会在启动校验里失败成 Error 态
         if (!serviceController.hasStartableSubscription()) {
-            pendingRestartOnRunning = false
+            serviceController.cancelPendingRestart()
+            val state = serviceController.status.value.state
             if (state == ProxyState.Running || state == ProxyState.Starting) stopProxy()
             return
         }
-        when (state) {
-            ProxyState.Running -> restartProxy()
-            ProxyState.Starting, ProxyState.Stopping -> pendingRestartOnRunning = true
-            ProxyState.Stopped, ProxyState.Error -> {
-                // 无运行中代理：下次手动点"启动"会用新 active 订阅，无需处理
-            }
-        }
+        serviceController.restartWhenReady(getActiveSubscriptionId())
     }
 
     fun switchMode(mode: String) {

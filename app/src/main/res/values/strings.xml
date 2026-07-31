@@ -303,6 +303,8 @@
     <string name="settings_dynamic_notification_summary_root_unsupported">VPN mode only</string>
     <string name="settings_subscription_via_proxy">Update via proxy</string>
     <string name="settings_subscription_via_proxy_summary">Use proxy when updating subscriptions</string>
+    <string name="settings_restart_after_update">Restart after update</string>
+    <string name="settings_restart_after_update_summary">Restart the proxy when the active profile is updated, so the new config takes effect (briefly interrupts connections)</string>
     <string name="settings_auto_connect">Connect on Launch</string>
     <string name="settings_auto_connect_summary">Start the proxy when the app opens, if a usable profile is available</string>
     <string name="settings_auto_restart">Restart on Boot</string>

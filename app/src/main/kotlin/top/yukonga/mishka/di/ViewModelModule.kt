@@ -32,7 +32,7 @@ val viewModelModule = module {
             onLiveProviderInfo = get<SubscriptionRepository>()::setLiveProviderInfo,
         )
     }
-    single { SubscriptionViewModel(get(), get(), get(), androidContext()) }
+    single { SubscriptionViewModel(get(), get(), get(), get(), androidContext()) }
     single {
         ProxyViewModel(
             selectionDao = get(),

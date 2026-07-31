@@ -301,6 +301,8 @@
     <string name="settings_dynamic_notification_summary_root_unsupported">VPN 模式专用</string>
     <string name="settings_subscription_via_proxy">通过代理更新</string>
     <string name="settings_subscription_via_proxy_summary">更新订阅时使用代理</string>
+    <string name="settings_restart_after_update">更新后重启代理</string>
+    <string name="settings_restart_after_update_summary">更新当前订阅后重启代理使新配置生效（会短暂中断连接）</string>
     <string name="settings_auto_connect">启动时自动连接</string>
     <string name="settings_auto_connect_summary">打开应用时若存在可用订阅则启动代理</string>
     <string name="settings_auto_restart">开机后自动重启</string>

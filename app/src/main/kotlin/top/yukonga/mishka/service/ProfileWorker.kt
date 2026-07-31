@@ -19,6 +19,7 @@ import top.yukonga.mishka.data.repository.ProfileProcessor
 import top.yukonga.mishka.data.repository.SubscriptionProxyResolver
 import top.yukonga.mishka.data.repository.SubscriptionRepositoryImpl
 import top.yukonga.mishka.platform.PlatformStorage
+import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.util.describe
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -41,6 +42,8 @@ class ProfileWorker : Service() {
     private val overrideStore: OverrideJsonStore by inject()
 
     private val updateScheduler: ProfileUpdateScheduler by inject()
+
+    private val serviceController: ProxyServiceController by inject()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -134,6 +137,10 @@ class ProfileWorker : Service() {
             )
 
             processor.update(uuid)
+
+            // 本 Service 自身是前台服务，app 因此处于前台状态，这里发给 Tun/Root Service 的
+            // startService 不受后台启动限制
+            serviceController.restartAfterProfileUpdate(uuid)
 
             NotificationHelper.notifyProfileUpdateSuccess(this, imported.name)
             Log.i(TAG, "Profile ${imported.name} updated successfully")

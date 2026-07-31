@@ -29,6 +29,9 @@ object StorageKeys {
     const val ACTIVE_PROFILE_NAME = "active_profile_name"
     const val SUBSCRIPTION_UPDATE_VIA_PROXY = "subscription_update_via_proxy"
 
+    // 更新 active 订阅后自动重启代理，默认开；理由见 ProxyServiceController.restartAfterProfileUpdate
+    const val RESTART_AFTER_PROFILE_UPDATE = "restart_after_profile_update"
+
     // Wi-Fi 自动切换
     const val WIFI_POLICY_ENABLED = "wifi_policy_enabled"
     const val WIFI_POLICY_SSIDS = "wifi_policy_ssids"

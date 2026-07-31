@@ -3,8 +3,15 @@ package top.yukonga.mishka.platform
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import top.yukonga.mishka.R
 import top.yukonga.mishka.service.MishkaRootService
 import top.yukonga.mishka.service.MishkaTunService
@@ -39,6 +46,13 @@ class ProxyServiceController(private val context: Context) {
     // 见 verifyAndSyncState：自动连接每进程只消费一次
     private var launchAutoConnectConsumed = false
 
+    // 不接外部 scope：Koin 的那个实例随进程存活，其余入口（Tile / BootReceiver /
+    // VpnPermissionActivity）是只发 start/stop 的短命自建实例，两者都没有可级联取消的宿主
+    private val scope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+
+    @Volatile
+    private var pendingRestartJob: Job? = null
+
     val status: StateFlow<ProxyServiceStatus> = ProxyServiceBridge.state
 
     fun start(subscriptionId: String? = null) {
@@ -64,6 +78,59 @@ class ProxyServiceController(private val context: Context) {
         val mode = activeModeOrStored()
         val intent = buildServiceIntent(mode, Op.Stop)
         context.startService(intent)
+    }
+
+    /**
+     * 「配置变了，代理在跑就重启让它生效」的统一入口。决策必须基于 [ProxyServiceBridge] 而非
+     * 调用方的 UI 标志——后者在启动窗口（约 10s）内仍是「未运行」，据此决策会漏掉重启，表现
+     * 成「界面已是新配置、代理仍跑旧的」。
+     *
+     * 过渡态直接重启会与 Service 内进行中的启动协程并发，故挂起等状态收敛：落到 Running 才补
+     * 一次，落到 Stopped / Error 就放弃——用户中途手动停了代理，不该被这次重启又拉起来。
+     */
+    @Synchronized
+    fun restartWhenReady(subscriptionId: String? = null) {
+        pendingRestartJob?.cancel()
+        pendingRestartJob = null
+        when (ProxyServiceBridge.state.value.state) {
+            ProxyState.Running -> restart(subscriptionId)
+
+            ProxyState.Starting, ProxyState.Stopping -> {
+                pendingRestartJob = scope.launch {
+                    val settled = ProxyServiceBridge.state.first {
+                        it.state != ProxyState.Starting && it.state != ProxyState.Stopping
+                    }
+                    if (settled.state != ProxyState.Running) return@launch
+                    // 这条协程不在任何 UI 宿主下，异常逸出会走默认 handler 打崩进程
+                    runCatching { restart(subscriptionId) }
+                        .onFailure { Log.e(TAG, "pending restart failed", it) }
+                }
+            }
+
+            ProxyState.Stopped, ProxyState.Error -> {
+                // 没有在跑的代理：下次启动自然读到新配置
+            }
+        }
+    }
+
+    /** 重启的前提已消失（如订阅被删光、没有配置可切）时放弃挂起中的那次。 */
+    @Synchronized
+    fun cancelPendingRestart() {
+        pendingRestartJob?.cancel()
+        pendingRestartJob = null
+    }
+
+    /**
+     * 订阅内容刚被刷新后请求生效。mihomo 只在进程启动时读一次 config.yaml，embed mode 下又没有
+     * 热重载 API（`/configs`、`/restart` 全 404），重启进程是唯一手段。
+     *
+     * active 判定收在这里而不是各调用方：前台手边是 DB、后台 Worker 只有 storage，两套判定源
+     * 迟早会不一致。
+     */
+    fun restartAfterProfileUpdate(uuid: String) {
+        if (storage.getString(StorageKeys.RESTART_AFTER_PROFILE_UPDATE, "true") != "true") return
+        if (uuid != storage.getString(StorageKeys.ACTIVE_PROFILE_UUID, "")) return
+        restartWhenReady(uuid)
     }
 
     /**
@@ -273,6 +340,7 @@ class ProxyServiceController(private val context: Context) {
     }
 
     companion object {
+        private const val TAG = "ProxyServiceController"
         const val EXTRA_SUBSCRIPTION_ID = "subscription_id"
     }
 }

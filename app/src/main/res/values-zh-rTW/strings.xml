@@ -301,6 +301,8 @@
     <string name="settings_dynamic_notification_summary_root_unsupported">僅限 VPN 模式</string>
     <string name="settings_subscription_via_proxy">透過代理更新</string>
     <string name="settings_subscription_via_proxy_summary">更新訂閱時使用代理</string>
+    <string name="settings_restart_after_update">更新後重新啟動代理</string>
+    <string name="settings_restart_after_update_summary">更新目前訂閱後重新啟動代理使新設定生效（會短暫中斷連線）</string>
     <string name="settings_auto_connect">啟動時自動連線</string>
     <string name="settings_auto_connect_summary">開啟應用程式時若有可用訂閱則啟動代理</string>
     <string name="settings_auto_restart">開機後自動重啟</string>

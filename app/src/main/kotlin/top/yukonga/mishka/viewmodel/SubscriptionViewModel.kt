@@ -22,6 +22,7 @@ import top.yukonga.mishka.domain.model.ProfileType
 import top.yukonga.mishka.domain.model.Subscription
 import top.yukonga.mishka.domain.repository.SubscriptionRepository
 import top.yukonga.mishka.platform.ProfileFileManager
+import top.yukonga.mishka.platform.ProxyServiceController
 import top.yukonga.mishka.util.describe
 
 /**
@@ -57,6 +58,7 @@ class SubscriptionViewModel(
     private val repository: SubscriptionRepository,
     val fileManager: ProfileFileManager,
     private val processor: ProfileProcessor,
+    private val serviceController: ProxyServiceController,
     private val context: Context,
 ) : ViewModel() {
 
@@ -151,6 +153,7 @@ class SubscriptionViewModel(
         }
         runPipeline(ProfileOperation.Update, errorKey = R.string.error_update_failed) {
             processor.update(id, ::reportProgress)
+            serviceController.restartAfterProfileUpdate(id)
         }
     }
 
@@ -176,6 +179,9 @@ class SubscriptionViewModel(
      * 便于每次只推进一条目的进度，避免并发 launch 让 `updateAll.currentName` 乱跳。
      * 失败聚合到 `error`；任一条失败不影响后续继续。CancellationException 直接传播
      * 让整个循环 cancel，不进 failures。
+     *
+     * 生效重启排在整轮之后：逐条重启会断流，后续订阅的下载（开了「通过代理更新」时走
+     * mixed-port）会跟着一起失败。
      */
     fun updateAllSubscriptions() {
         val targets = _uiState.value.subscriptions.filter { it.url.isNotBlank() }
@@ -185,6 +191,7 @@ class SubscriptionViewModel(
         _uiState.value = _uiState.value.copy(operation = ProfileOperation.Update, error = "")
         currentJob = viewModelScope.launch {
             val failures = mutableListOf<String>()
+            val updated = mutableListOf<String>()
             val total = targets.size
             try {
                 targets.forEachIndexed { index, sub ->
@@ -198,6 +205,7 @@ class SubscriptionViewModel(
                                 updateAll = state.copy(currentStep = progress),
                             )
                         }
+                        updated += sub.id
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Throwable) {
@@ -214,6 +222,8 @@ class SubscriptionViewModel(
                     operation = null,
                     error = if (failures.isEmpty()) "" else failures.joinToString("\n"),
                 )
+                // 非 active 的 uuid 在 controller 内被直接忽略，故至多触发一次重启
+                updated.forEach { serviceController.restartAfterProfileUpdate(it) }
             } catch (e: CancellationException) {
                 clearProgress()
                 throw e

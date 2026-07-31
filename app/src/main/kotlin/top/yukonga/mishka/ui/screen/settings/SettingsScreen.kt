@@ -72,6 +72,9 @@ fun SettingsScreen(
     var isUpdateViaProxyEnabled by remember {
         mutableStateOf(storage?.getString(StorageKeys.SUBSCRIPTION_UPDATE_VIA_PROXY, "true") != "false")
     }
+    var isRestartAfterUpdateEnabled by remember {
+        mutableStateOf(storage?.getString(StorageKeys.RESTART_AFTER_PROFILE_UPDATE, "true") != "false")
+    }
     var isHideTaskCardEnabled by remember {
         mutableStateOf(storage?.getString(StorageKeys.HIDE_TASK_CARD, "false") == "true")
     }
@@ -267,6 +270,20 @@ fun SettingsScreen(
                                 onCheckedChange = { checked ->
                                     storage?.putString(StorageKeys.SUBSCRIPTION_UPDATE_VIA_PROXY, if (checked) "true" else "false")
                                     isUpdateViaProxyEnabled = checked
+                                },
+                            )
+                        })
+                        add(CardItem("restartAfterUpdate") {
+                            SwitchPreference(
+                                title = stringResource(R.string.settings_restart_after_update),
+                                summary = stringResource(R.string.settings_restart_after_update_summary),
+                                checked = isRestartAfterUpdateEnabled,
+                                onCheckedChange = { checked ->
+                                    storage?.putString(
+                                        StorageKeys.RESTART_AFTER_PROFILE_UPDATE,
+                                        if (checked) "true" else "false",
+                                    )
+                                    isRestartAfterUpdateEnabled = checked
                                 },
                             )
                         })
