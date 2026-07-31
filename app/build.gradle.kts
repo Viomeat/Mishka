@@ -254,6 +254,8 @@ tasks.configureEach {
 }
 
 androidComponents {
+    // release 剥掉全部打包资源（LICENSE、kotlin 元数据等）。Ktor 的 ServiceLoader 描述符不受
+    // 影响：AGP 默认的 packaging.resources.merges 含 META-INF/services/**，merge 优先于 excludes
     onVariants(selector().withBuildType("release")) {
         it.packaging.resources.excludes.add("**")
     }
