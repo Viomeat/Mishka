@@ -1,5 +1,6 @@
 package top.yukonga.mishka.data.api
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +36,12 @@ class MihomoConnectionManager(scope: CoroutineScope) {
 
     init {
         scope.launch {
-            ProxyServiceBridge.state.collect { applyStatus(it) }
+            // 副作用包在 collect 内部：抛出去这条流就永久终结，代理再启动也拿不到 repository。
+            // 不能用 .catch——它是终结型的，捕获后同样不再重订阅
+            ProxyServiceBridge.state.collect { status ->
+                runCatching { applyStatus(status) }
+                    .onFailure { Log.e(TAG, "failed to apply proxy status ${status.state}", it) }
+            }
         }
     }
 
@@ -68,5 +74,9 @@ class MihomoConnectionManager(scope: CoroutineScope) {
         )
         val ws = MihomoWebSocket(client)
         return MihomoRepositoryImpl(client, ws)
+    }
+
+    private companion object {
+        const val TAG = "MihomoConnectionManager"
     }
 }

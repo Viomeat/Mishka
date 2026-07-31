@@ -1,5 +1,7 @@
 package top.yukonga.mishka.di
 
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,7 +21,14 @@ import top.yukonga.mishka.domain.repository.SubscriptionRepository
  * ProfileFileManager 实现由 `androidAppModule` 绑定。
  */
 val dataModule = module {
-    single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    // SupervisorJob 只隔离兄弟协程，救不了协程自己：未捕获异常会冒到默认 handler 打崩进程。
+    // 各消费方仍要在 collect 体内自行兜住副作用（见 SubscriptionRepositoryImpl），这里是最后一道网
+    single<CoroutineScope> {
+        val handler = CoroutineExceptionHandler { _, e ->
+            Log.e("AppScope", "uncaught in shared scope", e)
+        }
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + handler)
+    }
 
     single { get<AppDatabase>().importedDao() }
     single { get<AppDatabase>().pendingDao() }
