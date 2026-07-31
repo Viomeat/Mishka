@@ -22,5 +22,5 @@ val androidPlatformModule: Module = module {
     single { AppListProvider(androidContext()) }
     single { WifiPolicyController(androidContext()) }
     single { BootStartManager(androidContext()) }
-    single { BackupManager(androidContext(), get(), get(), get(), get(), get()) }
+    single { BackupManager(androidContext(), get(), get(), get(), get()) }
 }

@@ -1,17 +1,17 @@
 package top.yukonga.mishka.data.backup
 
 import android.content.Context
+import androidx.room3.withWriteTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import top.yukonga.mishka.data.database.ImportedDao
+import top.yukonga.mishka.data.database.AppDatabase
 import top.yukonga.mishka.data.database.ImportedEntity
-import top.yukonga.mishka.data.database.PendingDao
 import top.yukonga.mishka.data.database.PendingEntity
-import top.yukonga.mishka.data.database.SelectionDao
 import top.yukonga.mishka.data.database.SelectionEntity
 import top.yukonga.mishka.data.repository.ProfileProcessor
+import top.yukonga.mishka.data.repository.SubscriptionRepositoryImpl
 import top.yukonga.mishka.domain.model.ProfileType
 import top.yukonga.mishka.platform.BootStartManager
 import top.yukonga.mishka.platform.PlatformStorage
@@ -75,11 +75,14 @@ data class BackupSnapshot(
 class BackupManager(
     private val context: Context,
     private val storage: PlatformStorage,
-    private val importedDao: ImportedDao,
-    private val pendingDao: PendingDao,
-    private val selectionDao: SelectionDao,
+    private val database: AppDatabase,
+    private val repository: SubscriptionRepositoryImpl,
     private val bootStartManager: BootStartManager,
 ) {
+    private val importedDao get() = database.importedDao()
+    private val pendingDao get() = database.pendingDao()
+    private val selectionDao get() = database.selectionDao()
+
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -140,20 +143,10 @@ class BackupManager(
                 throw BackupException("Backup version ${snapshot.version} is newer than supported $BACKUP_VERSION")
             }
 
-            stageAndSwapFiles(entries)
-
-            // DB 清空重放；未知 ProfileType（未来版本新增）跳过该条而非失败
-            importedDao.clearAll()
-            pendingDao.clearAll()
-            selectionDao.clearAll()
-            snapshot.imported.forEach { p ->
-                p.toImportedEntity()?.let { importedDao.insert(it) }
-            }
-            snapshot.pending.forEach { p ->
-                p.toPendingEntity()?.let { pendingDao.insert(it) }
-            }
-            snapshot.selections.forEach {
-                selectionDao.insert(SelectionEntity(it.uuid, it.proxy, it.selected))
+            // 文件与 DB 一起换：processLock 挡不住只持 profileLock 的 create/patch/delete
+            repository.withProfileLock {
+                stageAndSwapFiles(entries)
+                replaceDatabase(snapshot)
             }
 
             // prefs 恢复（黑名单 key 不写入，本机运行时状态不被备份污染）
@@ -204,6 +197,24 @@ class BackupManager(
     }
 
     /** 内容先全写进 staging（此时正式目录一动未动），再 rename 换入；失败从 old/ 回滚。 */
+    /**
+     * 三表清空重放。**必须整体一个事务**：逐条 insert 各自一个隐式事务，中途抛（备份里
+     * 重复 uuid 会撞上 ImportedDao 的 ABORT）就留下半张表，而此时文件已经换完了。
+     * 未知 ProfileType（未来版本新增）跳过该条而非让整次恢复失败。
+     */
+    private suspend fun replaceDatabase(snapshot: BackupSnapshot) {
+        database.withWriteTransaction {
+            importedDao.clearAll()
+            pendingDao.clearAll()
+            selectionDao.clearAll()
+            snapshot.imported.forEach { p -> p.toImportedEntity()?.let { importedDao.insert(it) } }
+            snapshot.pending.forEach { p -> p.toPendingEntity()?.let { pendingDao.insert(it) } }
+            snapshot.selections.forEach {
+                selectionDao.insert(SelectionEntity(it.uuid, it.proxy, it.selected))
+            }
+        }
+    }
+
     private fun stageAndSwapFiles(entries: Map<String, ByteArray>) {
         val staging = File(mihomoDir, RESTORE_STAGING)
         val old = File(mihomoDir, RESTORE_OLD)
