@@ -8,8 +8,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
@@ -95,6 +98,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Sort
+import top.yukonga.miuix.kmp.interfaces.HoldDownInteraction
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.squircle.squircleSurface
@@ -496,6 +500,33 @@ fun ProxyScreen(
     }
 }
 
+/**
+ * 把 [holdDown] 映射成 [interactionSource] 上的按下态（miuix 的 `HoldDownObserver` 是 internal）。
+ * `interactions` 无 replay，故两处不能漏：离开组合补 Release，indication 换实例（深浅色切换）重发。
+ */
+@Composable
+private fun HoldDownEffect(holdDown: Boolean, interactionSource: MutableInteractionSource) {
+    val current = remember { mutableStateOf<HoldDownInteraction.HoldDown?>(null) }
+    val indication = LocalIndication.current
+    LaunchedEffect(holdDown, interactionSource, indication) {
+        current.value?.let {
+            interactionSource.emit(HoldDownInteraction.Release(it))
+            current.value = null
+        }
+        if (holdDown) {
+            val interaction = HoldDownInteraction.HoldDown()
+            current.value = interaction
+            interactionSource.emit(interaction)
+        }
+    }
+    DisposableEffect(interactionSource) {
+        onDispose {
+            current.value?.let { interactionSource.tryEmit(HoldDownInteraction.Release(it)) }
+            current.value = null
+        }
+    }
+}
+
 @Composable
 private fun ProxyGroupHeader(
     group: ProxyGroupUi,
@@ -512,10 +543,17 @@ private fun ProxyGroupHeader(
         label = "groupHeaderArrow",
     )
 
+    val interactionSource = remember { MutableInteractionSource() }
+    HoldDownEffect(isExpanded, interactionSource)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onToggle,
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -661,6 +699,10 @@ private val NodeRowHorizontalGap = 8.dp
 private val NodeRowVerticalGap = 12.dp
 private val NodeRowBottomPadding = 12.dp
 
+// 首行与组头之间的间距。和底距一样交给行内 Layout 而非 CardSegment.insidePadding：
+// 段上的 padding 不参与行高收缩，收起完成后会残留一条顶部底色
+private val NodeRowTopPadding = 12.dp
+
 // 一行恒定 ≤2 个节点，是节点网格的独立 lazy item 单元；排序/分行在 LazyColumn 内容 lambda 完成。
 // 单列切换不改分行而由本行 Layout 插值——两个节点同处一个 layout scope 才能连续过渡。
 @Composable
@@ -713,7 +755,8 @@ private fun ProxyNodeRow(
         // 竖排基准取首项实际高度：两节点高度不等时（有无协议 Badge）才不留多余空隙
         val secondX = lerp(halfWidth + horizontalGap, 0, fraction)
         val secondY = lerp(0, (first?.height ?: 0) + verticalGap, fraction)
-        val contentHeight = maxOf(
+        val topPadding = if (rowIndex == 0) NodeRowTopPadding.roundToPx() else 0
+        val contentHeight = topPadding + maxOf(
             first?.height ?: 0,
             if (second != null) secondY + second.height else 0,
         ) + NodeRowBottomPadding.roundToPx()
@@ -725,8 +768,8 @@ private fun ProxyNodeRow(
 
         // 内容按完整高度测量并顶部对齐，超出由段上 clipToBounds 裁掉——卷起而非压扁变形
         layout(rowWidth, rowHeight) {
-            first?.placeRelative(0, 0)
-            second?.placeRelative(secondX, secondY)
+            first?.placeRelative(0, topPadding)
+            second?.placeRelative(secondX, secondY + topPadding)
         }
     }
 }
