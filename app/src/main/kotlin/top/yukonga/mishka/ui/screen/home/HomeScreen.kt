@@ -143,6 +143,7 @@ fun HomeScreen(
                 )
                 latencySection(uiState, onTestLatency)
                 quickEntriesSection(
+                    isRunning = uiState.isRunning,
                     onNavigateLog = onNavigateLog,
                     onNavigateProvider = onNavigateProvider,
                     onNavigateConnection = onNavigateConnection,

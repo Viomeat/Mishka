@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.mishka.R
+import top.yukonga.mishka.domain.model.SubscriptionInfo
 import top.yukonga.mishka.ui.theme.StatusColors
 import top.yukonga.mishka.util.FormatUtils
 import top.yukonga.mishka.viewmodel.HomeUiState
@@ -65,7 +66,8 @@ fun LazyListScope.overviewCardsSection(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
-                state = state,
+                subscription = state.subscription,
+                isRunning = state.isRunning,
                 onClick = onSubscriptionClick,
             )
         }
@@ -85,7 +87,8 @@ private fun SpeedCard(
         insideMargin = PaddingValues(0.dp),
         // 代理未运行时无连接可差分，禁用点击避免弹出空弹窗
         onClick = if (isRunning) onClick else null,
-        pressFeedbackType = PressFeedbackType.Sink,
+        showIndication = isRunning,
+        pressFeedbackType = if (isRunning) PressFeedbackType.Sink else PressFeedbackType.None,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             TrafficSparkline(
@@ -123,12 +126,12 @@ private fun SpeedCard(
 @Composable
 private fun SubscriptionCard(
     modifier: Modifier = Modifier,
-    state: HomeUiState,
+    subscription: SubscriptionInfo?,
+    isRunning: Boolean,
     onClick: () -> Unit,
 ) {
-    val info = state.subscription
-    val total = info?.Total?.coerceAtLeast(0) ?: 0
-    val used = info?.let { (it.Upload + it.Download).coerceAtLeast(0) } ?: 0
+    val total = subscription?.Total?.coerceAtLeast(0) ?: 0
+    val used = subscription?.let { (it.Upload + it.Download).coerceAtLeast(0) } ?: 0
     // total<=0 的语义见 HomeViewModel.activeSubscriptionInfo：不画用量水印、badge 退回 "SUB"
     val hasQuota = total > 0
     val progress = if (hasQuota) (used.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
@@ -137,8 +140,9 @@ private fun SubscriptionCard(
         modifier = modifier,
         insideMargin = PaddingValues(0.dp),
         // 代理未运行时 provider 流量无数据可查，禁用点击避免弹出空弹窗
-        onClick = if (state.isRunning) onClick else null,
-        pressFeedbackType = PressFeedbackType.Sink,
+        onClick = if (isRunning) onClick else null,
+        showIndication = isRunning,
+        pressFeedbackType = if (isRunning) PressFeedbackType.Sink else PressFeedbackType.None,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (hasQuota) {
@@ -168,7 +172,7 @@ private fun SubscriptionCard(
                 }
                 InfoRow(
                     stringResource(R.string.home_used),
-                    if (info != null) FormatUtils.formatBytes(used) else "--",
+                    FormatUtils.formatBytes(used),
                     Modifier.padding(top = 8.dp)
                 )
                 InfoRow(

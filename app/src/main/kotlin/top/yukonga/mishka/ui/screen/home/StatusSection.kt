@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,15 +35,16 @@ import top.yukonga.mishka.platform.TunMode
 import top.yukonga.mishka.ui.theme.RunState
 import top.yukonga.mishka.ui.theme.StatusColors
 import top.yukonga.mishka.viewmodel.HomeUiState
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.DropdownDefaults
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.popup.WindowDropdownDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 fun LazyListScope.statusSection(
     state: HomeUiState = HomeUiState(),
@@ -97,8 +99,6 @@ private fun StatusContent(
                 .weight(1f)
                 .fillMaxHeight(),
             colors = CardDefaults.defaultColors(color = statusContainer),
-            onClick = { },
-            pressFeedbackType = PressFeedbackType.Tilt,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Box(
@@ -162,7 +162,8 @@ private fun StatusContent(
                     .weight(1f),
                 insideMargin = PaddingValues(16.dp),
                 onClick = { if (isRunning) showModeDialog = true },
-                pressFeedbackType = PressFeedbackType.Sink,
+                showIndication = isRunning,
+                pressFeedbackType = if (isRunning) PressFeedbackType.Sink else PressFeedbackType.None,
             ) {
                 Text(
                     text = stringResource(R.string.home_mode),
@@ -186,7 +187,8 @@ private fun StatusContent(
                     .weight(1f),
                 insideMargin = PaddingValues(16.dp),
                 onClick = { if (isRunning && !isTproxy) showTunStackDialog = true },
-                pressFeedbackType = if (isTproxy) PressFeedbackType.None else PressFeedbackType.Sink,
+                showIndication = isRunning && !isTproxy,
+                pressFeedbackType = if (isRunning && !isTproxy) PressFeedbackType.Sink else PressFeedbackType.None,
             ) {
                 Text(
                     text = if (isTproxy) stringResource(R.string.home_inbound) else stringResource(R.string.home_tun),
@@ -203,23 +205,21 @@ private fun StatusContent(
         }
     }
 
-    ModeSelectDialog(
+    OptionSelectDialog(
         show = showModeDialog,
-        currentMode = state.mode,
-        onSelect = { mode ->
-            onSwitchMode(mode)
-            showModeDialog = false
-        },
+        title = stringResource(R.string.home_switch_mode),
+        options = MODE_OPTIONS,
+        current = state.mode,
+        onSelect = onSwitchMode,
         onDismiss = { showModeDialog = false },
     )
 
-    TunStackSelectDialog(
+    OptionSelectDialog(
         show = showTunStackDialog,
-        currentStack = state.tunStack,
-        onSelect = { stack ->
-            onSwitchTunStack(stack)
-            showTunStackDialog = false
-        },
+        title = stringResource(R.string.home_switch_tun_stack),
+        options = TUN_STACK_OPTIONS,
+        current = state.tunStack,
+        onSelect = onSwitchTunStack,
         onDismiss = { showTunStackDialog = false },
     )
 }
@@ -227,108 +227,52 @@ private fun StatusContent(
 // ROOT TPROXY 模式 mihomo tproxy-port（与 RootTproxyApplier.TPROXY_PORT 对齐，UI 仅展示用）
 private const val TPROXY_INBOUND_PORT: Int = 7895
 
-private fun modeLabel(mode: String): String = when (mode.lowercase()) {
-    "rule" -> "Rule"
-    "global" -> "Global"
-    "direct" -> "Direct"
-    else -> mode.ifEmpty { "--" }
-}
+// value（mihomo 侧小写标识）to label（展示名），同时供卡片取值与选择弹窗列举
+private val MODE_OPTIONS = listOf("rule" to "Rule", "global" to "Global", "direct" to "Direct")
 
-private fun tunStackLabel(stack: String): String = when (stack.lowercase()) {
-    "mixed" -> "Mixed"
-    "gvisor" -> "gVisor"
-    "system" -> "System"
-    else -> stack.ifEmpty { "--" }
-}
+private val TUN_STACK_OPTIONS = listOf("mixed" to "Mixed", "gvisor" to "gVisor", "system" to "System")
 
+private fun modeLabel(mode: String): String =
+    MODE_OPTIONS.firstOrNull { it.first == mode.lowercase() }?.second ?: mode.ifEmpty { "--" }
+
+private fun tunStackLabel(stack: String): String =
+    TUN_STACK_OPTIONS.firstOrNull { it.first == stack.lowercase() }?.second ?: stack.ifEmpty { "--" }
+
+/**
+ * 单选弹窗：点选即生效并自行关闭（`collapseOnSelection` 默认 true），底部只留取消。
+ * 选中项的高亮底色 + 勾选走 [DropdownDefaults.dialogDropdownColors]。
+ */
 @Composable
-private fun ModeSelectDialog(
+private fun OptionSelectDialog(
     show: Boolean,
-    currentMode: String,
+    title: String,
+    options: List<Pair<String, String>>,
+    current: String,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val modes = remember { listOf("rule" to "Rule", "global" to "Global", "direct" to "Direct") }
-    var selected by remember(show, currentMode) { mutableStateOf(currentMode.lowercase()) }
-
-    WindowDialog(
-        show = show,
-        title = stringResource(R.string.home_switch_mode),
-        onDismissRequest = onDismiss,
-    ) {
-        Column {
-            modes.forEachIndexed { index, (value, label) ->
-                TextButton(
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val selected = current.lowercase()
+    // onSelect 不进 key：调用点每次重组都可能给出新 lambda，会让整个 entry 白重建
+    val entry = remember(options, selected) {
+        DropdownEntry(
+            options.map { (value, label) ->
+                DropdownItem(
                     text = label,
-                    onClick = { selected = value },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = if (selected == value) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
+                    selected = value == selected,
+                    onClick = { currentOnSelect(value) },
                 )
-                if (index < modes.lastIndex) Spacer(Modifier.height(12.dp))
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.common_confirm),
-                    onClick = { onSelect(selected) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                )
-                TextButton(
-                    text = stringResource(R.string.common_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+            },
+        )
     }
-}
 
-@Composable
-private fun TunStackSelectDialog(
-    show: Boolean,
-    currentStack: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val stacks = remember { listOf("mixed" to "Mixed", "gvisor" to "gVisor", "system" to "System") }
-    var selected by remember(show, currentStack) { mutableStateOf(currentStack.lowercase()) }
-
-    WindowDialog(
+    WindowDropdownDialog(
+        entry = entry,
+        title = title,
+        dialogButtonString = stringResource(R.string.common_cancel),
         show = show,
-        title = stringResource(R.string.home_switch_tun_stack),
-        onDismissRequest = onDismiss,
-    ) {
-        Column {
-            stacks.forEachIndexed { index, (value, label) ->
-                TextButton(
-                    text = label,
-                    onClick = { selected = value },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = if (selected == value) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
-                )
-                if (index < stacks.lastIndex) Spacer(Modifier.height(12.dp))
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.common_confirm),
-                    onClick = { onSelect(selected) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                )
-                TextButton(
-                    text = stringResource(R.string.common_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
+        onDismiss = onDismiss,
+        onDismissFinished = {},
+        dropdownColors = DropdownDefaults.dialogDropdownColors(),
+    )
 }

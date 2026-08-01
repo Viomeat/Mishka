@@ -21,6 +21,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
 fun LazyListScope.quickEntriesSection(
+    isRunning: Boolean,
     onNavigateLog: () -> Unit = {},
     onNavigateProvider: () -> Unit = {},
     onNavigateConnection: () -> Unit = {},
@@ -44,12 +45,14 @@ fun LazyListScope.quickEntriesSection(
                     modifier = Modifier.weight(1f),
                     title = stringResource(R.string.home_providers),
                     subtitle = stringResource(R.string.home_providers_subtitle),
+                    isRunning = isRunning,
                     onClick = onNavigateProvider,
                 )
                 QuickEntryCard(
                     modifier = Modifier.weight(1f),
                     title = stringResource(R.string.home_connections),
                     subtitle = stringResource(R.string.home_connections_subtitle),
+                    isRunning = isRunning,
                     onClick = onNavigateConnection,
                 )
             }
@@ -61,12 +64,14 @@ fun LazyListScope.quickEntriesSection(
                     modifier = Modifier.weight(1f),
                     title = stringResource(R.string.home_logs),
                     subtitle = stringResource(R.string.home_logs_subtitle),
+                    isRunning = isRunning,
                     onClick = onNavigateLog,
                 )
                 QuickEntryCard(
                     modifier = Modifier.weight(1f),
                     title = stringResource(R.string.home_dns),
                     subtitle = stringResource(R.string.home_dns_subtitle),
+                    isRunning = isRunning,
                     onClick = onNavigateDnsQuery,
                 )
             }
@@ -79,13 +84,15 @@ private fun QuickEntryCard(
     modifier: Modifier = Modifier,
     title: String,
     subtitle: String,
+    isRunning: Boolean,
     onClick: () -> Unit,
 ) {
     Card(
         modifier = modifier,
         insideMargin = PaddingValues(16.dp),
         onClick = onClick,
-        pressFeedbackType = PressFeedbackType.Sink,
+        showIndication = isRunning,
+        pressFeedbackType = if (isRunning) PressFeedbackType.Sink else PressFeedbackType.None,
     ) {
         Text(
             text = title,
