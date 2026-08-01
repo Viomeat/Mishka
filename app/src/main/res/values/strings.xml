@@ -97,11 +97,11 @@
     <string name="home_running">Running</string>
     <string name="home_stopping">Stopping</string>
     <string name="home_stopped">Stopped</string>
-    <string name="home_mode">Mode</string>
-    <string name="home_tun">TUN</string>
+    <string name="home_mode">Proxy Mode</string>
+    <string name="home_tun">TUN Stack</string>
     <string name="home_inbound">Inbound</string>
     <string name="home_inbound_tproxy">TPROXY:%1$d</string>
-    <string name="home_switch_mode">Switch Mode</string>
+    <string name="home_switch_mode">Switch Proxy Mode</string>
     <string name="home_switch_tun_stack">Switch TUN Stack</string>
     <string name="home_uptime_seconds">%1$ds</string>
     <string name="home_uptime_minutes">%1$dm</string>
@@ -477,7 +477,6 @@
     <string name="app_proxy_import">Import</string>
     <string name="app_proxy_export">Export</string>
     <string name="app_proxy_no_match">No matching apps</string>
-    <string name="app_proxy_mode">Proxy Mode</string>
     <string name="app_proxy_allow_all">Allow All Apps</string>
     <string name="app_proxy_allow_all_summary">All app traffic goes through proxy</string>
     <string name="app_proxy_allow_selected">Allow Selected Only</string>

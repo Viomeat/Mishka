@@ -95,11 +95,11 @@
     <string name="home_running">运行中</string>
     <string name="home_stopping">停止中</string>
     <string name="home_stopped">已停止</string>
-    <string name="home_mode">模式</string>
-    <string name="home_tun">TUN</string>
+    <string name="home_mode">代理模式</string>
+    <string name="home_tun">TUN Stack</string>
     <string name="home_inbound">入站</string>
     <string name="home_inbound_tproxy">TPROXY:%1$d</string>
-    <string name="home_switch_mode">切换模式</string>
+    <string name="home_switch_mode">切换代理模式</string>
     <string name="home_switch_tun_stack">切换 TUN Stack</string>
     <string name="home_uptime_seconds">%1$d 秒</string>
     <string name="home_uptime_minutes">%1$d 分钟</string>
@@ -475,7 +475,6 @@
     <string name="app_proxy_import">导入</string>
     <string name="app_proxy_export">导出</string>
     <string name="app_proxy_no_match">无匹配应用</string>
-    <string name="app_proxy_mode">代理模式</string>
     <string name="app_proxy_allow_all">允许所有应用</string>
     <string name="app_proxy_allow_all_summary">所有应用的流量都经过代理</string>
     <string name="app_proxy_allow_selected">仅允许选中应用</string>

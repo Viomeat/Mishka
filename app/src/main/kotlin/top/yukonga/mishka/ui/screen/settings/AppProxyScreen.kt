@@ -354,14 +354,11 @@ fun AppProxyScreen(
                     top = innerPadding.calculateTopPadding(),
                 ),
             ) {
-                // 代理模式
-                item(key = "mode_title") { SmallTitle(text = stringResource(R.string.app_proxy_mode)) }
                 item(key = "mode_card") {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .padding(bottom = 6.dp),
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
                         RadioButtonPreference(
                             title = stringResource(R.string.app_proxy_allow_all),

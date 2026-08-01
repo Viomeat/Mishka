@@ -161,9 +161,10 @@ private fun StatusContent(
                     .fillMaxWidth()
                     .weight(1f),
                 insideMargin = PaddingValues(16.dp),
-                onClick = { if (isRunning) showModeDialog = true },
-                showIndication = isRunning,
-                pressFeedbackType = if (isRunning) PressFeedbackType.Sink else PressFeedbackType.None,
+                // 停止态也可切：切的是 override，运行中才顺带重启
+                onClick = { showModeDialog = true },
+                showIndication = true,
+                pressFeedbackType = PressFeedbackType.Sink,
             ) {
                 Text(
                     text = stringResource(R.string.home_mode),

@@ -145,7 +145,7 @@ class HomeViewModel(
     private val onLiveProviderInfo: (subscriptionId: String?, info: SubscriptionInfo?) -> Unit = { _, _ -> },
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HomeUiState())
+    private val _uiState = MutableStateFlow(HomeUiState(mode = persistedMode()))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private val _speedState = MutableStateFlow(SpeedSnapshot())
@@ -227,7 +227,7 @@ class HomeViewModel(
                     }
 
                     ProxyState.Stopped -> {
-                        _uiState.value = HomeUiState()
+                        _uiState.value = HomeUiState(mode = persistedMode())
                         lastErrorToast = null
                         resetHotStates()
                     }
@@ -240,7 +240,7 @@ class HomeViewModel(
                             lastErrorToast = message
                             showToast(message, long = true)
                         }
-                        _uiState.value = HomeUiState(errorMessage = message)
+                        _uiState.value = HomeUiState(errorMessage = message, mode = persistedMode())
                         resetHotStates()
                     }
                 }
@@ -676,11 +676,22 @@ class HomeViewModel(
         serviceController.restartWhenReady(getActiveSubscriptionId())
     }
 
+    /**
+     * 停止态展示的 mode：`/configs` 只在 Running 时有值，停了就回退 override 里「下次启动生效」
+     * 的那个。override 未显式设置时生效值来自订阅 yaml、app 侧不可见，仍是 "--"。
+     */
+    private fun persistedMode(): String = overrideStore.load().mode?.takeIf { it.isNotBlank() } ?: "--"
+
+    /**
+     * 停止态也可切：写 override 与运行态无关，重启交给 [ProxyServiceController.restartWhenReady]
+     * 判定（Stopped/Error 下什么都不做，下次启动自然读到新值），别退回 `restart()`——
+     * 那会把用户没打算启动的代理拉起来。
+     */
     fun switchMode(mode: String) {
         val current = overrideStore.load()
         overrideStore.save(current.copy(mode = mode))
         _uiState.value = _uiState.value.copy(mode = mode)
-        serviceController.restart(getActiveSubscriptionId())
+        serviceController.restartWhenReady(getActiveSubscriptionId())
     }
 
     fun switchTunStack(stack: String) {
