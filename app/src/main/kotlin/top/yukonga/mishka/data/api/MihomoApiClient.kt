@@ -81,6 +81,15 @@ class MihomoApiClient(
         ensureSuccess(response, "proxy group '$group'")
     }
 
+    /**
+     * 解除 URLTest / Fallback 组的固定选择，交还给自动择优。
+     * Selector 组无固定态，mihomo 对其返回 400。
+     */
+    suspend fun unfixProxy(group: String) {
+        val response: HttpResponse = client.delete("$baseUrl/proxies/$group")
+        ensureSuccess(response, "proxy group '$group'")
+    }
+
     suspend fun getProxyDelay(name: String, testUrl: String = "http://www.gstatic.com/generate_204", timeout: Int = 5000): DelayResult =
         client.get("$baseUrl/proxies/$name/delay") {
             url {
@@ -100,22 +109,6 @@ class MihomoApiClient(
         timeout: Int = 5000,
     ): DelayResult =
         client.get("$baseUrl/providers/proxies/$provider/$name/healthcheck") {
-            url {
-                parameters.append("url", testUrl)
-                parameters.append("timeout", timeout.toString())
-            }
-        }.body()
-
-    /**
-     * 测试代理组内全部节点延迟（mihomo 并发执行，对任意 ProxyGroup 类型有效）。
-     * 返回 Map<节点名, 延迟ms>；超时节点延迟为 0（mihomo 端约定，UI 侧映射为 -1 显示「超时」）。
-     */
-    suspend fun getGroupDelay(
-        name: String,
-        testUrl: String = "http://www.gstatic.com/generate_204",
-        timeout: Int = 5000,
-    ): Map<String, Int> =
-        client.get("$baseUrl/group/$name/delay") {
             url {
                 parameters.append("url", testUrl)
                 parameters.append("timeout", timeout.toString())

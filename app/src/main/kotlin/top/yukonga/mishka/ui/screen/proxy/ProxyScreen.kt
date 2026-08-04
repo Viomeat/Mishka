@@ -96,8 +96,10 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
+import top.yukonga.miuix.kmp.icon.extended.Pin
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Sort
+import top.yukonga.miuix.kmp.icon.extended.Unpin
 import top.yukonga.miuix.kmp.interfaces.HoldDownInteraction
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
@@ -442,6 +444,7 @@ fun ProxyScreen(
                                     iconCacheVersion = iconCacheVersion,
                                     isTesting = group.name in uiState.testingGroups,
                                     onTestDelay = { viewModel?.testGroupDelay(group.name) },
+                                    onUnfix = { viewModel?.unfixProxy(group.name) },
                                     onToggle = { toggleGroup(group.name) },
                                 )
                             }
@@ -480,9 +483,7 @@ fun ProxyScreen(
                                                 viewModel?.testNodeDelay(nodeName)
                                             },
                                             onSelect = { proxyName ->
-                                                if (group.type.lowercase() == "selector") {
-                                                    viewModel?.selectProxy(group.name, proxyName)
-                                                }
+                                                viewModel?.selectProxy(group.name, proxyName)
                                             },
                                         )
                                     }
@@ -534,6 +535,7 @@ private fun ProxyGroupHeader(
     iconCacheVersion: Int,
     isTesting: Boolean,
     onTestDelay: () -> Unit,
+    onUnfix: () -> Unit,
     onToggle: () -> Unit,
 ) {
     // 保持 State：解包后喂给 Modifier.rotate 会让整个组头在 300ms 内逐帧重组
@@ -604,6 +606,21 @@ private fun ProxyGroupHeader(
             fontSize = 14.sp,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
+        // 固定是组级属性，放组头才能在收起状态下操作
+        if (group.isFixed) {
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = onUnfix,
+                modifier = Modifier.size(24.dp),
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Unpin,
+                    contentDescription = stringResource(R.string.proxy_unfix),
+                    modifier = Modifier.size(16.dp),
+                    tint = StatusColors.warning,
+                )
+            }
+        }
         Spacer(Modifier.width(8.dp))
         IconButton(
             onClick = onTestDelay,
@@ -723,13 +740,14 @@ private fun ProxyNodeRow(
                 val isSelected = proxyName == group.now
                 val delay = group.delays[proxyName]
                 val nodeType = group.nodeTypes[proxyName] ?: ""
-                val isSelectable = group.type.lowercase() == "selector"
+                val isSelectable = group.isSelectable
 
                 ProxyNodeCard(
                     name = proxyName,
                     type = nodeType,
                     delay = delay,
                     isSelected = isSelected,
+                    isFixed = proxyName == group.fixed,
                     isSelectable = isSelectable,
                     isTesting = proxyName in testingNodes,
                     onTestDelay = { onTestNodeDelay(proxyName) },
@@ -780,6 +798,7 @@ private fun ProxyNodeCard(
     type: String,
     delay: Int?,
     isSelected: Boolean,
+    isFixed: Boolean,
     isSelectable: Boolean,
     isTesting: Boolean = false,
     onTestDelay: () -> Unit = {},
@@ -794,10 +813,11 @@ private fun ProxyNodeCard(
     val delayColor = StatusColors.delay(delay)
     val testNodeDelayLabel = stringResource(R.string.proxy_test_node_delay)
 
-    val backgroundColor = if (isSelected) {
-        StatusColors.selectedNodeContainer
-    } else {
-        MiuixTheme.colorScheme.surface
+    // 固定与选中异色：同色就看不出该组已不再自动切换
+    val backgroundColor = when {
+        isFixed -> StatusColors.fixedNodeContainer
+        isSelected -> StatusColors.selectedNodeContainer
+        else -> MiuixTheme.colorScheme.surface
     }
 
     Box(
@@ -820,18 +840,33 @@ private fun ProxyNodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 节点名不截断：超出可用宽度时走跑马灯滚动，短名保持原宽（fill = false）
-                Text(
-                    text = name,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    softWrap = false,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .basicMarquee(iterations = Int.MAX_VALUE),
-                )
+                // 包成子 Row：外层 SpaceBetween 会把剩余空间摄进图钉与名字的间隙
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isFixed) {
+                        Icon(
+                            imageVector = MiuixIcons.Pin,
+                            contentDescription = stringResource(R.string.proxy_fixed),
+                            modifier = Modifier.size(11.dp),
+                            tint = StatusColors.warning,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    // 节点名不截断：超出可用宽度时走跑马灯滚动，短名保持原宽（fill = false）
+                    Text(
+                        text = name,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
                 Spacer(Modifier.width(6.dp))
                 Box(
                     modifier = Modifier

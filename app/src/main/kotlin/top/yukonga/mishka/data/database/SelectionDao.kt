@@ -16,6 +16,9 @@ interface SelectionDao {
     @Query("DELETE FROM selections WHERE uuid = :uuid")
     suspend fun removeByUUID(uuid: String)
 
+    @Query("DELETE FROM selections WHERE uuid = :uuid AND proxy = :proxy")
+    suspend fun remove(uuid: String, proxy: String)
+
     @Query("SELECT * FROM selections")
     suspend fun queryAll(): List<SelectionEntity>
 

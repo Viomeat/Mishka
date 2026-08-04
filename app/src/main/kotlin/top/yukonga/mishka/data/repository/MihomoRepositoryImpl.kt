@@ -40,6 +40,7 @@ class MihomoRepositoryImpl(
     override suspend fun getProxies(): Result<ProxiesResponse> = runCatching { apiClient.getProxies() }
     override suspend fun getGroups(): Result<GroupsResponse> = runCatching { apiClient.getGroups() }
     override suspend fun selectProxy(group: String, name: String): Result<Unit> = runCatching { apiClient.selectProxy(group, name) }
+    override suspend fun unfixProxy(group: String): Result<Unit> = runCatching { apiClient.unfixProxy(group) }
     override suspend fun getProxyDelay(
         name: String,
         testUrl: String,
@@ -54,13 +55,6 @@ class MihomoRepositoryImpl(
         timeout: Int,
     ): Result<DelayResult> =
         runCatching { apiClient.getProviderProxyDelay(provider, name, testUrl, timeout) }
-
-    override suspend fun testGroupDelay(
-        groupName: String,
-        testUrl: String,
-        timeout: Int,
-    ): Result<Map<String, Int>> =
-        runCatching { apiClient.getGroupDelay(groupName, testUrl, timeout) }
 
     override suspend fun getRules(): Result<RulesResponse> = runCatching { apiClient.getRules() }
     override fun connectionsFlow(): Flow<ConnectionsResponse> = webSocket.connectionsFlow()

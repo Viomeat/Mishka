@@ -15,10 +15,14 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.collections.immutable.toPersistentSet
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import top.yukonga.mishka.data.database.SelectionDao
 import top.yukonga.mishka.data.database.SelectionEntity
 import top.yukonga.mishka.domain.repository.MihomoRepository
@@ -35,7 +39,20 @@ data class ProxyGroupUi(
     val delays: ImmutableMap<String, Int> = persistentMapOf(),
     val nodeTypes: ImmutableMap<String, String> = persistentMapOf(),
     val icon: String = "",
-)
+    // 用户固定到的节点；空串 = 自动择优。Selector 组恒为空
+    val fixed: String = "",
+) {
+    /** 对应 mihomo 的 `outboundgroup.SelectAble`；LoadBalance / Relay 不实现，PUT 返回 400 */
+    val isSelectable: Boolean
+        get() = isSelector ||
+            type.equals("URLTest", ignoreCase = true) ||
+            type.equals("Fallback", ignoreCase = true)
+
+    /** 选中写 now；其余可选组写 fixed（now 仍是自动择优结果） */
+    val isSelector: Boolean get() = type.equals("Selector", ignoreCase = true)
+
+    val isFixed: Boolean get() = fixed.isNotEmpty()
+}
 
 @Immutable
 data class ProxyUiState(
@@ -206,6 +223,7 @@ class ProxyViewModel(
                             delays = delays.toPersistentMap(),
                             nodeTypes = nodeTypes.toPersistentMap(),
                             icon = node.icon,
+                            fixed = node.fixed,
                         )
                     }
                     .toPersistentList()
@@ -227,12 +245,22 @@ class ProxyViewModel(
 
     fun selectProxy(group: String, proxy: String) {
         val repo = repository ?: return
+        val target = groupOf(group) ?: return
+        // 不可选组 PUT 必定 400，提前挡下省一个 RTT
+        if (!target.isSelectable) return
         viewModelScope.launch {
             repo.selectProxy(group, proxy).onSuccess {
                 if (repository !== repo) return@onSuccess
                 _uiState.value = _uiState.value.copy(
                     groups = _uiState.value.groups
-                        .map { if (it.name == group) it.copy(now = proxy) else it }
+                        .map {
+                            when {
+                                it.name != group -> it
+                                // 非 Selector 组的选中即固定，两个字段同步写
+                                it.isSelector -> it.copy(now = proxy)
+                                else -> it.copy(now = proxy, fixed = proxy)
+                            }
+                        }
                         .toPersistentList()
                 )
                 saveSelection(group, proxy)
@@ -240,17 +268,55 @@ class ProxyViewModel(
         }
     }
 
+    /**
+     * 解除固定。selections 记录必须一并删，它是 restoreSelections 的数据源，
+     * 留着会在下次连接时把钉子推回去
+     */
+    fun unfixProxy(group: String) {
+        val repo = repository ?: return
+        viewModelScope.launch {
+            repo.unfixProxy(group).onSuccess {
+                // 校验先于 DB 写：clearSelection 按当前 uuid 定位，repo 切走后会误删新订阅
+                if (repository !== repo) return@launch
+                clearSelection(group)
+                // now 由 mihomo 重新择优，本地推算不出
+                loadProxies()
+            }
+        }
+    }
+
+    /**
+     * 逐节点而非 `/group/{name}/delay`：后者会先对非 Selector 组 `ForceSet("")`
+     * 解除固定（hub/route/groups.go）。两者都写全局 history.delay，结果等价
+     */
     fun testGroupDelay(group: String) {
         val repo = repository ?: return
         if (group in _uiState.value.testingGroups) return
+        val nodes = groupOf(group)?.all ?: return
+        if (nodes.isEmpty()) return
         _uiState.value = _uiState.value.copy(
             testingGroups = (_uiState.value.testingGroups + group).toPersistentSet(),
         )
 
         viewModelScope.launch {
             try {
-                // mihomo /group/{name}/delay 测全部节点延迟，结果会自然写入 history.delay
-                repo.testGroupDelay(group)
+                // 限并发：上百节点齐发会互抢带宽，测出的延迟失真
+                val semaphore = Semaphore(GROUP_DELAY_CONCURRENCY)
+                coroutineScope {
+                    nodes.map { nodeName ->
+                        async {
+                            semaphore.withPermit {
+                                // 单节点失败是正常结果，不能让它终止整组
+                                val provider = nodeProviderMap[nodeName]
+                                if (provider != null) {
+                                    repo.getProviderProxyDelay(provider, nodeName)
+                                } else {
+                                    repo.getProxyDelay(nodeName)
+                                }
+                            }
+                        }
+                    }.awaitAll()
+                }
                 if (repository !== repo) return@launch
                 loadProxies()
             } finally {
@@ -295,6 +361,15 @@ class ProxyViewModel(
         dao.insert(SelectionEntity(uuid = uuid, proxy = group, selected = proxy))
     }
 
+    private fun groupOf(name: String): ProxyGroupUi? =
+        _uiState.value.groups.firstOrNull { it.name == name }
+
+    private suspend fun clearSelection(group: String) {
+        val uuid = getActiveUuid() ?: return
+        val dao = selectionDao ?: return
+        dao.remove(uuid = uuid, proxy = group)
+    }
+
     private suspend fun restoreSelections(repo: MihomoRepository, groups: ImmutableList<ProxyGroupUi>) {
         val uuid = getActiveUuid() ?: return
         val dao = selectionDao ?: return
@@ -305,13 +380,19 @@ class ProxyViewModel(
         val updatedGroups = groups.toMutableList()
 
         for ((index, group) in groups.withIndex()) {
-            if (group.type != "Selector") continue
+            if (!group.isSelectable) continue
             val saved = selectionMap[group.name] ?: continue
-            if (saved == group.now) continue
             if (saved !in group.all) continue
+            // 非 Selector 组必须比 fixed：其 now 是择优结果，恰好等于 saved 时
+            // 跳过会让该组停在未固定态
+            if (saved == (if (group.isSelector) group.now else group.fixed)) continue
 
             repo.selectProxy(group.name, saved).onSuccess {
-                updatedGroups[index] = group.copy(now = saved)
+                updatedGroups[index] = if (group.isSelector) {
+                    group.copy(now = saved)
+                } else {
+                    group.copy(now = saved, fixed = saved)
+                }
             }
         }
 
@@ -322,6 +403,8 @@ class ProxyViewModel(
     }
 
     companion object {
+        private const val GROUP_DELAY_CONCURRENCY = 5
+
         const val GLOBAL_GROUP = "GLOBAL"
         const val MODE_GLOBAL = "global"
         const val MODE_DIRECT = "direct"

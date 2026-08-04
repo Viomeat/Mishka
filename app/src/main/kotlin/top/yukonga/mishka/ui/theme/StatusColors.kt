@@ -121,6 +121,11 @@ object StatusColors {
         @Composable @ReadOnlyComposable
         get() = if (LocalAppDarkMode.current) Color(0xFF1A3040) else Color(0xFFE3F2FD)
 
+    /** Proxy 节点固定态背景（URLTest / Fallback 被钉住），暖调以区别于冷调选中态 */
+    val fixedNodeContainer: Color
+        @Composable @ReadOnlyComposable
+        get() = if (LocalAppDarkMode.current) Color(0xFF3A3420) else Color(0xFFFFF8E1)
+
     // —— 内部调色板。色值是手挑的，名字里的色阶只是记号，与 Material 官方色阶并不逐一对应 ——
     private val Green300Dark = Color(0xFF81C784)
     private val Green600Light = Color(0xFF4CAF50)
