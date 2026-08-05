@@ -1,7 +1,5 @@
 package top.yukonga.mishka.ui.screen.proxy
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -58,7 +56,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -167,27 +164,11 @@ fun ProxyScreen(
     // 展开/收起进度（per 组，1 = 完全展开）。收起先跑动画再从 expandedGroups 摘除，期间靠
     // retainedGroups 保住行 item——变成 disappearing item 就会脱离布局在原位淡出，与上移的下方内容穿插
     //
-    // 注意这是**普通** mutableMapOf 而非 mutableStateMapOf：新增 key 本身不触发重组，
-    // 它能驱动 UI 只因 toggleGroup 里每次 getOrPut 之后**必定**跟一次 expandedGroups /
-    // animatingGroups（都是 SnapshotStateList）的写。调换那两处顺序、或新增一条只改本 map
-    // 的路径，就会静默漏掉重组——不会报错，只是那一组不动
+    // 注意这是普通 mutableMapOf：新增 key 本身不触发重组，toggleGroup 随后写入 expandedGroups
+    // 才会让持有进度的节点行重新测量。
     val expandProgress = remember { mutableMapOf<String, MutableFloatState>() }
     val retainedGroups = remember { mutableStateListOf<String>() }
-    val animatingGroups = remember { mutableStateListOf<String>() }
     val expandJobs = remember { mutableMapOf<String, Job>() }
-
-    // 动画期间关掉 placement：行高收缩已连续，再叠一层 spring 追赶会让行与行拖影不同步
-    val defaultPlacementSpec = remember {
-        spring(
-            stiffness = Spring.StiffnessMediumLow,
-            visibilityThreshold = IntOffset.VisibilityThreshold,
-        )
-    }
-    val itemPlacementSpec = if (animatingGroups.isNotEmpty() || singleColumnAnimating) {
-        null
-    } else {
-        defaultPlacementSpec
-    }
 
     fun toggleGroup(name: String) {
         val progress = expandProgress.getOrPut(name) {
@@ -202,7 +183,6 @@ fun ProxyScreen(
             expandedGroups.remove(name)
             if (name !in retainedGroups) retainedGroups.add(name)
         }
-        if (name !in animatingGroups) animatingGroups.add(name)
         expandJobs[name] = coroutineScope.launch {
             animate(
                 initialValue = progress.floatValue,
@@ -210,8 +190,9 @@ fun ProxyScreen(
                 animationSpec = tween(300),
             ) { value, _ -> progress.floatValue = value }
             // 被打断时不执行，清理交给接手的新动画
-            if (!expanding) retainedGroups.remove(name)
-            animatingGroups.remove(name)
+            if (!expanding) {
+                retainedGroups.remove(name)
+            }
         }
     }
 
@@ -397,7 +378,7 @@ fun ProxyScreen(
                             CardSegment(
                                 isFirst = true,
                                 isLast = true,
-                                modifier = Modifier.animateItem(placementSpec = itemPlacementSpec),
+                                modifier = Modifier.animateItem(placementSpec = null),
                                 outerTopPadding = 12.dp,
                                 insidePadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                             ) {
@@ -434,7 +415,7 @@ fun ProxyScreen(
                             CardSegment(
                                 isFirst = true,
                                 isLast = !isExpanded,
-                                modifier = Modifier.animateItem(placementSpec = itemPlacementSpec),
+                                modifier = Modifier.animateItem(placementSpec = null),
                                 bottomCornerRadius = headerBottomCorner,
                                 outerTopPadding = 12.dp,
                             ) {
@@ -452,7 +433,6 @@ fun ProxyScreen(
 
                         if (rows.isNotEmpty()) {
                             val lastRowIndex = rows.lastIndex
-                            val rowCount = rows.size
                             val groupExpandProgress = expandProgress[group.name]
                             rows.forEachIndexed { rowIndex, row ->
                                 item(
@@ -463,7 +443,7 @@ fun ProxyScreen(
                                         isFirst = false,
                                         isLast = rowIndex == lastRowIndex,
                                         modifier = Modifier
-                                            .animateItem(placementSpec = itemPlacementSpec)
+                                            .animateItem(placementSpec = null)
                                             .clipToBounds(),
                                         // 底距交给行内 Layout 一起收缩，否则收完残留一条 12dp 底色
                                         insidePadding = PaddingValues(
@@ -477,7 +457,6 @@ fun ProxyScreen(
                                             singleColumnProgress = singleColumnProgress,
                                             expandProgress = groupExpandProgress,
                                             rowIndex = rowIndex,
-                                            rowCount = rowCount,
                                             testingNodes = uiState.testingNodes,
                                             onTestNodeDelay = { nodeName ->
                                                 viewModel?.testNodeDelay(nodeName)
@@ -729,7 +708,6 @@ private fun ProxyNodeRow(
     singleColumnProgress: State<Float>,
     expandProgress: FloatState?,
     rowIndex: Int,
-    rowCount: Int,
     testingNodes: ImmutableSet<String> = persistentSetOf(),
     onTestNodeDelay: (String) -> Unit = {},
     onSelect: (String) -> Unit,
@@ -779,9 +757,8 @@ private fun ProxyNodeRow(
             if (second != null) secondY + second.height else 0,
         ) + NodeRowBottomPadding.roundToPx()
 
-        // 整组按「总高 × 进度」连续收缩，摊到本行即 rowCount*进度 - rowIndex：末行先卷完、逐行往上
         val expand = expandProgress?.floatValue ?: 1f
-        val visibleFraction = (rowCount * expand - rowIndex).coerceIn(0f, 1f)
+        val visibleFraction = expand
         val rowHeight = (contentHeight * visibleFraction).roundToInt()
 
         // 内容按完整高度测量并顶部对齐，超出由段上 clipToBounds 裁掉——卷起而非压扁变形
