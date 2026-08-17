@@ -1,9 +1,9 @@
 [versions]
 agp = "9.3.1"
 androidx-activity = "1.13.0"
-androidx-benchmark = "1.5.0-beta01"
+androidx-benchmark = "1.5.0-rc01"
 androidx-lifecycle = "2.11.0"
-androidx-navigation3 = "1.1.5"
+androidx-navigation3 = "1.1.6"
 androidx-navigationevent = "1.1.2"
 androidx-profileinstaller = "1.4.1"
 androidx-splashscreen = "1.2.0"
