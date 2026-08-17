@@ -1,6 +1,6 @@
-package top.yukonga.mishka.ui.navigation3
+package top.yukonga.mishka.ui.navigation
 
-import androidx.navigation3.runtime.NavKey
+import top.yukonga.miuix.kmp.nav.core.NavKey
 import kotlinx.serialization.Serializable
 
 /**

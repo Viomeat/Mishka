@@ -18,7 +18,7 @@ dependencies {
     implementation(platform(libs.koin.bom))
     implementation(libs.bundles.koin)
     implementation(libs.bundles.androidx.lifecycle)
-    implementation(libs.bundles.androidx.navigation)
+    implementation(libs.androidx.navigationevent)
     implementation(libs.bundles.room)
     implementation(libs.bundles.kotlinx)
     implementation(libs.bundles.ktor)
@@ -79,6 +79,10 @@ android {
             minorApiLevel = ProjectConfig.Android.COMPILE_SDK_MINOR
         }
     }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
     defaultConfig {
         applicationId = ProjectConfig.PACKAGE_NAME
         minSdk = ProjectConfig.Android.MIN_SDK
@@ -109,6 +113,12 @@ android {
             reset()
             include("arm64-v8a")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
 

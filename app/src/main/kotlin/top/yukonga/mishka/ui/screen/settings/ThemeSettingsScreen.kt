@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,8 +52,10 @@ import top.yukonga.mishka.ui.theme.ThemeAccentColor
 import top.yukonga.mishka.ui.theme.ThemeColorModes
 import top.yukonga.mishka.ui.theme.ThemeConfig
 import top.yukonga.mishka.ui.theme.ThemePaletteStyles
+import top.yukonga.mishka.ui.theme.TopBarBlurStyle
 import top.yukonga.mishka.ui.theme.label
 import top.yukonga.mishka.ui.theme.normalizeDensityScale
+import top.yukonga.mishka.ui.theme.summary
 import top.yukonga.mishka.ui.theme.themeColorModeLabel
 import top.yukonga.mishka.ui.theme.writeThemeConfig
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
@@ -86,13 +89,15 @@ fun ThemeSettingsScreen(
     themeConfig: ThemeConfig,
     onThemeConfigChange: (ThemeConfig) -> Unit,
     onPredictiveBackChange: ((Boolean) -> Unit)? = null,
+    swipeDismissEnabled: Boolean = true,
+    onSwipeDismissChange: ((Boolean) -> Unit)? = null,
     onBack: () -> Unit = {},
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     var isPredictiveBackEnabled by remember {
         mutableStateOf(storage.getString(StorageKeys.PREDICTIVE_BACK, "false") == "true")
     }
-    var densityScaleDraft by remember { mutableStateOf((themeConfig.densityScale * 100f).roundToInt().toFloat()) }
+    var densityScaleDraft by remember { mutableFloatStateOf((themeConfig.densityScale * 100f).roundToInt().toFloat()) }
     var showDensityScaleDialog by remember { mutableStateOf(false) }
     val densityScaleTextState = rememberTextFieldState()
 
@@ -134,6 +139,10 @@ fun ThemeSettingsScreen(
     val bottomBarModes = BottomBarMode.entries.toList()
     val bottomBarModeItems = bottomBarModes.map { mode -> mode.label() }
     val selectedBottomBarModeIndex = bottomBarModes.indexOf(themeConfig.bottomBarMode).coerceAtLeast(0)
+    val topBarBlurStyles = TopBarBlurStyle.entries.toList()
+    val topBarBlurStyleItems = topBarBlurStyles.map { style -> style.label() }
+    val topBarBlurStyleSummaries = topBarBlurStyles.map { style -> style.summary() }
+    val selectedTopBarBlurStyleIndex = topBarBlurStyles.indexOf(themeConfig.topBarBlurStyle).coerceAtLeast(0)
     val isBlurSupported = isRuntimeShaderSupported()
 
     val backdrop = rememberBlurBackdrop()
@@ -246,7 +255,34 @@ fun ThemeSettingsScreen(
                             },
                             enabled = isBlurSupported,
                         )
+                        AnimatedVisibility(
+                            visible = themeConfig.blurEnabled && isBlurSupported,
+                            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                        ) {
+                            OverlayDropdownPreference(
+                                title = stringResource(R.string.settings_theme_blur_style),
+                                summary = topBarBlurStyleSummaries.getOrElse(selectedTopBarBlurStyleIndex) {
+                                    topBarBlurStyleSummaries.first()
+                                },
+                                items = topBarBlurStyleItems,
+                                selectedIndex = selectedTopBarBlurStyleIndex,
+                                onSelectedIndexChange = { index ->
+                                    updateTheme(themeConfig.copy(topBarBlurStyle = topBarBlurStyles[index]))
+                                },
+                            )
+                        }
                     })
+                    if (onSwipeDismissChange != null) {
+                        add(CardItem("swipeDismiss") {
+                            SwitchPreference(
+                                title = stringResource(R.string.settings_swipe_dismiss),
+                                summary = stringResource(R.string.settings_swipe_dismiss_summary),
+                                checked = swipeDismissEnabled,
+                                onCheckedChange = { checked -> onSwipeDismissChange(checked) },
+                            )
+                        })
+                    }
                     if (onPredictiveBackChange != null) {
                         add(CardItem("predictiveBack") {
                             SwitchPreference(
@@ -434,4 +470,3 @@ private val DigitsOnlyTransformation = InputTransformation {
 }
 
 private fun formatDensityScalePercent(value: Float): String = "${value.roundToInt()}%"
-

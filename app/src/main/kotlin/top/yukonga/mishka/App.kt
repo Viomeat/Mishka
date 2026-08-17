@@ -12,6 +12,7 @@ import top.yukonga.mishka.platform.FilePicker
 import top.yukonga.mishka.platform.PlatformStorage
 import top.yukonga.mishka.platform.WifiPolicyController
 import top.yukonga.mishka.ui.component.blur.LocalBlurEnabled
+import top.yukonga.mishka.ui.component.blur.LocalTopBarBlurStyle
 import top.yukonga.mishka.ui.navigation.AppNavigation
 import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.mishka.ui.theme.LocalAppMonetEnabled
@@ -121,6 +122,7 @@ fun App(
             LocalPlatformDensity provides currentDensity,
             LocalDensity provides appDensity,
             LocalBlurEnabled provides themeConfig.blurEnabled,
+            LocalTopBarBlurStyle provides themeConfig.topBarBlurStyle,
             LocalContentColor provides MiuixTheme.colorScheme.onBackground,
         ) {
             AppNavigation(

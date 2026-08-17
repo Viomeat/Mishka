@@ -12,6 +12,7 @@ data class ThemeConfig(
     val paletteStyle: ThemePaletteStyle = ThemePaletteStyle.TonalSpot,
     val accentColor: ThemeAccentColor = ThemeAccentColor.Default,
     val blurEnabled: Boolean = true,
+    val topBarBlurStyle: TopBarBlurStyle = TopBarBlurStyle.Gaussian,
     val floatingBottomBar: Boolean = false,
     val floatingBottomBarStyle: FloatingBottomBarStyle = FloatingBottomBarStyle.Miuix,
     val bottomBarMode: BottomBarMode = BottomBarMode.IconAndText,
@@ -49,6 +50,16 @@ enum class BottomBarMode(val storageValue: String) {
     companion object {
         fun fromStorage(value: String): BottomBarMode =
             entries.firstOrNull { it.storageValue == value } ?: IconAndText
+    }
+}
+
+enum class TopBarBlurStyle(val storageValue: String) {
+    Gaussian("gaussian"),
+    Progressive("progressive");
+
+    companion object {
+        fun fromStorage(value: String): TopBarBlurStyle =
+            entries.firstOrNull { it.storageValue == value } ?: Gaussian
     }
 }
 
@@ -94,6 +105,9 @@ fun readThemeConfig(storage: PlatformStorage): ThemeConfig {
             storage.getString(StorageKeys.THEME_ACCENT_COLOR, ThemeAccentColor.Default.storageValue),
         ),
         blurEnabled = storage.getString(StorageKeys.THEME_BLUR, "true") != "false",
+        topBarBlurStyle = TopBarBlurStyle.fromStorage(
+            storage.getString(StorageKeys.THEME_BLUR_STYLE, TopBarBlurStyle.Gaussian.storageValue),
+        ),
         floatingBottomBar = storage.getString(StorageKeys.THEME_FLOATING_BOTTOM_BAR, "false") == "true",
         floatingBottomBarStyle = FloatingBottomBarStyle.fromStorage(
             storage.getString(StorageKeys.THEME_FLOATING_BOTTOM_BAR_STYLE, FloatingBottomBarStyle.Miuix.storageValue),
@@ -122,6 +136,7 @@ fun writeThemeConfig(storage: PlatformStorage, config: ThemeConfig) {
     storage.putString(StorageKeys.THEME_PALETTE_STYLE, config.paletteStyle.name)
     storage.putString(StorageKeys.THEME_ACCENT_COLOR, config.accentColor.storageValue)
     storage.putString(StorageKeys.THEME_BLUR, config.blurEnabled.toString())
+    storage.putString(StorageKeys.THEME_BLUR_STYLE, config.topBarBlurStyle.storageValue)
     storage.putString(StorageKeys.THEME_FLOATING_BOTTOM_BAR, config.floatingBottomBar.toString())
     storage.putString(StorageKeys.THEME_FLOATING_BOTTOM_BAR_STYLE, config.floatingBottomBarStyle.storageValue)
     storage.putString(StorageKeys.THEME_BOTTOM_BAR_MODE, config.bottomBarMode.storageValue)

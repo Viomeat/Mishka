@@ -313,7 +313,7 @@
     <string name="settings_theme_group_color">顏色與主題</string>
     <string name="settings_theme_group_interface">介面與效果</string>
     <string name="settings_theme_group_navigation">底部導覽列</string>
-    <string name="settings_theme_summary">深淺色、取色、介面縮放與底部列樣式</string>
+    <string name="settings_theme_summary">顏色、模糊效果與介面縮放，底部列與返回手勢</string>
     <string name="settings_theme_mode">主題模式</string>
     <string name="settings_theme_system">跟隨系統</string>
     <string name="settings_theme_light">淺色</string>
@@ -322,6 +322,11 @@
     <string name="settings_theme_monet_summary">可用時使用系統動態取色</string>
     <string name="settings_theme_blur">模糊效果</string>
     <string name="settings_theme_blur_summary">啟用頂部列、底部列等表面的模糊效果</string>
+    <string name="settings_theme_blur_style">頂欄模糊樣式</string>
+    <string name="settings_theme_blur_style_gaussian">高斯</string>
+    <string name="settings_theme_blur_style_progressive">漸進</string>
+    <string name="settings_theme_blur_style_gaussian_summary">頂欄整體均勻模糊</string>
+    <string name="settings_theme_blur_style_progressive_summary">頂部漸強模糊</string>
     <string name="settings_theme_density_scale">介面縮放</string>
     <string name="settings_theme_density_scale_summary">調整全域顯示比例（80% - 110%）</string>
     <string name="settings_theme_floating_bottom_bar">懸浮底部列</string>
@@ -356,6 +361,8 @@
     <string name="settings_theme_accent_teal">藍綠色</string>
     <string name="settings_predictive_back">預測性返回手勢</string>
     <string name="settings_predictive_back_summary">啟用預測性返回動畫效果</string>
+    <string name="settings_swipe_dismiss">橫移返回手勢</string>
+    <string name="settings_swipe_dismiss_summary">在頁面任意位置橫移即可返回上一頁</string>
     <string name="settings_hide_task_card">從最近使用清單隱藏</string>
     <string name="settings_hide_task_card_summary">在最近使用清單中隱藏任務卡片</string>
     <string name="settings_about">關於</string>

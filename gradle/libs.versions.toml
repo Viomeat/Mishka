@@ -3,7 +3,6 @@ agp = "9.3.1"
 androidx-activity = "1.13.0"
 androidx-benchmark = "1.5.0-rc01"
 androidx-lifecycle = "2.11.0"
-androidx-navigation3 = "1.1.6"
 androidx-navigationevent = "1.1.2"
 androidx-profileinstaller = "1.4.1"
 androidx-splashscreen = "1.2.0"
@@ -19,7 +18,7 @@ kotlinx-serialization = "1.11.0"
 ksp = "2.3.9"
 ktor = "3.5.2"
 material-icons-extended = "1.7.8"
-miuix = "0.9.3"
+miuix = "0.9.4-rc01"
 quickie = "1.12.0"
 room3 = "3.0.1"
 sqlite = "2.7.0"
@@ -30,7 +29,6 @@ androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "androidx-splashscreen" }
 androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
-androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "androidx-navigation3" }
 androidx-navigationevent = { module = "androidx.navigationevent:navigationevent-compose", version.ref = "androidx-navigationevent" }
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "androidx-profileinstaller" }
 androidx-room3-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room3" }
@@ -54,7 +52,7 @@ ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", 
 material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "material-icons-extended" }
 miuix-blur = { module = "top.yukonga.miuix.kmp:miuix-blur-android", version.ref = "miuix" }
 miuix-icons = { module = "top.yukonga.miuix.kmp:miuix-icons-android", version.ref = "miuix" }
-miuix-navigation3-ui = { module = "top.yukonga.miuix.kmp:miuix-navigation3-ui-android", version.ref = "miuix" }
+miuix-nav = { module = "top.yukonga.miuix.kmp:miuix-nav-android", version.ref = "miuix" }
 miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference-android", version.ref = "miuix" }
 miuix-ui = { module = "top.yukonga.miuix.kmp:miuix-ui-android", version.ref = "miuix" }
 quickie-bundled = { module = "io.github.g00fy2.quickie:quickie-bundled", version.ref = "quickie" }
@@ -62,12 +60,11 @@ scripta-editor = { module = "scripta:editor" }
 
 [bundles]
 androidx-lifecycle = ["androidx-lifecycle-runtime", "androidx-lifecycle-viewmodel"]
-androidx-navigation = ["androidx-navigation3-runtime", "androidx-navigationevent"]
 baselineprofile = ["androidx-benchmark-macro-junit4", "androidx-test-junit", "androidx-uiautomator"]
 koin = ["koin-android", "koin-core"]
 kotlinx = ["kotlinx-collections-immutable", "kotlinx-coroutines-core", "kotlinx-datetime", "kotlinx-serialization-json"]
 ktor = ["ktor-client-content-negotiation", "ktor-client-core", "ktor-client-okhttp", "ktor-client-websockets", "ktor-serialization-json"]
-miuix = ["miuix-blur", "miuix-icons", "miuix-navigation3-ui", "miuix-preference", "miuix-ui"]
+miuix = ["miuix-blur", "miuix-icons", "miuix-nav", "miuix-preference", "miuix-ui"]
 room = ["androidx-room3-runtime", "androidx-sqlite-bundled"]
 
 [plugins]

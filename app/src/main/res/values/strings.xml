@@ -315,7 +315,7 @@
     <string name="settings_theme_group_color">Color &amp; Theme</string>
     <string name="settings_theme_group_interface">Interface &amp; Effects</string>
     <string name="settings_theme_group_navigation">Bottom Navigation</string>
-    <string name="settings_theme_summary">Color mode, palette, interface scale and bottom bar style</string>
+    <string name="settings_theme_summary">Color, blur effects and interface scale; bottom bar and back gestures</string>
     <string name="settings_theme_mode">Theme Mode</string>
     <string name="settings_theme_system">Follow System</string>
     <string name="settings_theme_light">Light</string>
@@ -324,6 +324,11 @@
     <string name="settings_theme_monet_summary">Use the system dynamic color palette when available</string>
     <string name="settings_theme_blur">Blur Effects</string>
     <string name="settings_theme_blur_summary">Enable blur effects for bars and layered surfaces</string>
+    <string name="settings_theme_blur_style">Top bar blur style</string>
+    <string name="settings_theme_blur_style_gaussian">Gaussian</string>
+    <string name="settings_theme_blur_style_progressive">Progressive</string>
+    <string name="settings_theme_blur_style_gaussian_summary">Uniform frosted blur across the top bar</string>
+    <string name="settings_theme_blur_style_progressive_summary">Gradient blur, strongest at the top edge</string>
     <string name="settings_theme_density_scale">Interface Scale</string>
     <string name="settings_theme_density_scale_summary">Adjust the global display scale (80% - 110%)</string>
     <string name="settings_theme_floating_bottom_bar">Floating Bottom Bar</string>
@@ -358,6 +363,8 @@
     <string name="settings_theme_accent_teal">Teal</string>
     <string name="settings_predictive_back">Predictive Back Gesture</string>
     <string name="settings_predictive_back_summary">Enable predictive back animation</string>
+    <string name="settings_swipe_dismiss">Swipe Back Gesture</string>
+    <string name="settings_swipe_dismiss_summary">Swipe sideways anywhere on the page to go back</string>
     <string name="settings_hide_task_card">Hide from recents</string>
     <string name="settings_hide_task_card_summary">Hide task card in recent tasks</string>
     <string name="settings_about">About</string>

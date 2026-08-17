@@ -48,20 +48,16 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.runtime.rememberDecoratedNavEntries
-import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
-import androidx.navigation3.ui.NavDisplay
-import androidx.navigation3.ui.NavDisplayTransitionEffects
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -75,13 +71,11 @@ import top.yukonga.mishka.R
 import top.yukonga.mishka.platform.BootStartManager
 import top.yukonga.mishka.platform.FilePicker
 import top.yukonga.mishka.platform.PlatformStorage
+import top.yukonga.mishka.platform.StorageKeys
 import top.yukonga.mishka.platform.WifiPolicyController
 import top.yukonga.mishka.ui.component.blur.BlurredBar
 import top.yukonga.mishka.ui.component.blur.rememberBlurBackdrop
 import top.yukonga.mishka.ui.component.liquid.IosLiquidGlassNavigationBar
-import top.yukonga.mishka.ui.navigation3.LocalNavigator
-import top.yukonga.mishka.ui.navigation3.Navigator
-import top.yukonga.mishka.ui.navigation3.Route
 import top.yukonga.mishka.ui.screen.connection.ConnectionScreen
 import top.yukonga.mishka.ui.screen.dns.DnsQueryScreen
 import top.yukonga.mishka.ui.screen.home.HomeScreen
@@ -109,6 +103,7 @@ import top.yukonga.mishka.ui.theme.BottomBarMode
 import top.yukonga.mishka.ui.theme.FloatingBottomBarStyle
 import top.yukonga.mishka.ui.theme.LocalAppDarkMode
 import top.yukonga.mishka.ui.theme.ThemeConfig
+import top.yukonga.mishka.ui.theme.TopBarBlurStyle
 import top.yukonga.mishka.ui.util.rememberIsWideScreen
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
 import top.yukonga.mishka.viewmodel.BackupViewModel
@@ -144,6 +139,11 @@ import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.icon.extended.UploadCloud
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
 
@@ -158,7 +158,6 @@ private val NavBackStackSaver = Saver<SnapshotStateList<NavKey>, List<String>>(
     },
     restore = { savedRoutes ->
         val restoredRoutes = savedRoutes.mapNotNull { value ->
-            // 版本升降级后可能残留未知路由条目：丢弃该条而非崩溃
             runCatching { Json.decodeFromString<Route>(value) }.getOrNull()
         }
         mutableStateListOf<NavKey>().apply {
@@ -206,7 +205,7 @@ fun AppNavigation(
     backupViewModel: BackupViewModel? = null,
     onRestartApp: () -> Unit = {},
 ) {
-    val backStack = rememberSaveable(saver = NavBackStackSaver) { mutableStateListOf<NavKey>(Route.Main) }
+    val backStack = rememberSaveable(saver = NavBackStackSaver) { mutableStateListOf(Route.Main) }
     val navigator = remember { Navigator(backStack) }
     val pagerState = rememberPagerState(pageCount = { 4 })
     val mainPagerState = rememberMainPagerState(pagerState)
@@ -235,12 +234,31 @@ fun AppNavigation(
 
     MainScreenBackHandler(mainPagerState, navigator)
 
+    // 横移返回默认启用；设置页开关实时生效（storage 只持久化，本状态驱动 entry 的 swipeDismiss）
+    var swipeDismissEnabled by remember {
+        mutableStateOf(storage?.getString(StorageKeys.SWIPE_DISMISS, "true") == "true")
+    }
+
+    // 横移返回方向是物理方向（不随布局方向镜像），RTL 下要反过来
+    val swipeBackDirection = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+        NavSwipeDirection.RightToLeft
+    } else {
+        NavSwipeDirection.LeftToRight
+    }
+    val swipeDismiss = if (swipeDismissEnabled) swipeBackDirection else null
+
     CompositionLocalProvider(
         LocalNavigator provides navigator,
         LocalMainPagerState provides mainPagerState,
     ) {
-        val provider = entryProvider<NavKey> {
-            entry<Route.Main> {
+        NavDisplay(
+            backStack = backStack,
+            onBack = { navigator.pop() },
+            effects = NavDisplayEffects(
+                cornerClipRadius = rememberNavSystemCornerRadius(),
+            ),
+        ) {
+            entry<Route.Main>(swipeDismiss = swipeDismiss) {
                 MainPage(
                     homeViewModel,
                     proxyViewModel,
@@ -249,16 +267,12 @@ fun AppNavigation(
                     mainPagerState,
                     bootStartManager,
                     themeConfig,
-                    onThemeConfigChange,
                     storage,
-                    onPredictiveBackChange,
                     onHideTaskCardChange,
                     hasRootPermission,
-                    wifiPolicyController,
-                    onRequestWifiPermission,
                 )
             }
-            entry<Route.SubscriptionAdd> {
+            entry<Route.SubscriptionAdd>(swipeDismiss = swipeDismiss) {
                 SubscriptionAddScreen(
                     viewModel = subscriptionViewModel,
                     onBack = { navigator.pop() },
@@ -287,7 +301,7 @@ fun AppNavigation(
                     } else null,
                 )
             }
-            entry<Route.SubscriptionAddUrl> { route ->
+            entry<Route.SubscriptionAddUrl>(swipeDismiss = swipeDismiss) { route ->
                 subscriptionViewModel?.let {
                     SubscriptionAddUrlScreen(
                         viewModel = it,
@@ -299,7 +313,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.SubscriptionEdit> { route ->
+            entry<Route.SubscriptionEdit>(swipeDismiss = swipeDismiss) { route ->
                 subscriptionViewModel?.let {
                     SubscriptionEditScreen(
                         uuid = route.uuid,
@@ -309,7 +323,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.Log> {
+            entry<Route.Log>(swipeDismiss = swipeDismiss) {
                 logViewModel?.let {
                     LogScreen(
                         viewModel = it,
@@ -317,7 +331,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.Provider> {
+            entry<Route.Provider>(swipeDismiss = swipeDismiss) {
                 providerViewModel?.let {
                     ProviderScreen(
                         viewModel = it,
@@ -325,7 +339,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.Connection> {
+            entry<Route.Connection>(swipeDismiss = swipeDismiss) {
                 connectionViewModel?.let {
                     ConnectionScreen(
                         viewModel = it,
@@ -333,7 +347,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.DnsQuery> {
+            entry<Route.DnsQuery>(swipeDismiss = swipeDismiss) {
                 dnsQueryViewModel?.let {
                     DnsQueryScreen(
                         viewModel = it,
@@ -341,7 +355,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.VpnSettings> {
+            entry<Route.VpnSettings>(swipeDismiss = swipeDismiss) {
                 storage?.let {
                     VpnSettingsScreen(
                         storage = it,
@@ -350,7 +364,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.RootSettings> {
+            entry<Route.RootSettings>(swipeDismiss = swipeDismiss) {
                 storage?.let {
                     val homeState = homeViewModel?.uiState?.collectAsStateWithLifecycle()?.value
                     RootSettingsScreen(
@@ -360,7 +374,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.NetworkSettings> {
+            entry<Route.NetworkSettings>(swipeDismiss = swipeDismiss) {
                 networkSettingsViewModel?.let {
                     NetworkSettingsScreen(
                         viewModel = it,
@@ -368,7 +382,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.MetaSettings> {
+            entry<Route.MetaSettings>(swipeDismiss = swipeDismiss) {
                 metaSettingsViewModel?.let {
                     MetaSettingsScreen(
                         viewModel = it,
@@ -376,7 +390,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.AppProxy> {
+            entry<Route.AppProxy>(swipeDismiss = swipeDismiss) {
                 appProxyViewModel?.let {
                     AppProxyScreen(
                         viewModel = it,
@@ -384,7 +398,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.WifiPolicy> {
+            entry<Route.WifiPolicy>(swipeDismiss = swipeDismiss) {
                 storage?.let {
                     WifiPolicyScreen(
                         storage = it,
@@ -394,18 +408,23 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.ThemeSettings> {
+            entry<Route.ThemeSettings>(swipeDismiss = swipeDismiss) {
                 storage?.let {
                     ThemeSettingsScreen(
                         storage = it,
                         themeConfig = themeConfig,
                         onThemeConfigChange = onThemeConfigChange,
                         onPredictiveBackChange = onPredictiveBackChange,
+                        swipeDismissEnabled = swipeDismissEnabled,
+                        onSwipeDismissChange = { enabled ->
+                            swipeDismissEnabled = enabled
+                            it.putString(StorageKeys.SWIPE_DISMISS, enabled.toString())
+                        },
                         onBack = { navigator.pop() },
                     )
                 }
             }
-            entry<Route.ExternalControl> {
+            entry<Route.ExternalControl>(swipeDismiss = swipeDismiss) {
                 externalControlViewModel?.let {
                     ExternalControlScreen(
                         viewModel = it,
@@ -413,7 +432,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.BackupRestore> {
+            entry<Route.BackupRestore>(swipeDismiss = swipeDismiss) {
                 if (backupViewModel != null && storage != null) {
                     BackupRestoreScreen(
                         viewModel = backupViewModel,
@@ -424,7 +443,7 @@ fun AppNavigation(
                     )
                 }
             }
-            entry<Route.FileManager> {
+            entry<Route.FileManager>(swipeDismiss = swipeDismiss) {
                 FileManagerScreen(
                     subscriptionViewModel = subscriptionViewModel,
                     onBack = { navigator.pop() },
@@ -433,7 +452,7 @@ fun AppNavigation(
                     },
                 )
             }
-            entry<Route.FileManagerEditor> { route ->
+            entry<Route.FileManagerEditor>(swipeDismiss = swipeDismiss) { route ->
                 FileManagerEditorScreen(
                     uuid = route.uuid,
                     relativePath = route.relativePath,
@@ -441,7 +460,7 @@ fun AppNavigation(
                     onBack = { navigator.pop() },
                 )
             }
-            entry<Route.About> {
+            entry<Route.About>(swipeDismiss = swipeDismiss) {
                 val uriHandler = LocalUriHandler.current
                 AboutScreen(
                     onBack = { navigator.pop() },
@@ -450,22 +469,6 @@ fun AppNavigation(
                 )
             }
         }
-
-        val entries = rememberDecoratedNavEntries(
-            backStack = backStack,
-            entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
-            entryProvider = provider,
-        )
-
-        NavDisplay(
-            entries = entries,
-            onBack = { navigator.pop() },
-            transitionEffects = NavDisplayTransitionEffects(
-                enableCornerClip = true,
-                dimAmount = 0.5f,
-                blockInputDuringTransition = true,
-            ),
-        )
     }
 }
 
@@ -478,13 +481,9 @@ private fun MainPage(
     mainPagerState: MainPagerState,
     bootStartManager: BootStartManager? = null,
     themeConfig: ThemeConfig = ThemeConfig(),
-    onThemeConfigChange: (ThemeConfig) -> Unit = {},
     storage: PlatformStorage? = null,
-    onPredictiveBackChange: ((Boolean) -> Unit)? = null,
     onHideTaskCardChange: ((Boolean) -> Unit)? = null,
     hasRootPermission: Boolean = false,
-    wifiPolicyController: WifiPolicyController? = null,
-    onRequestWifiPermission: (((Boolean) -> Unit) -> Unit)? = null,
 ) {
     val homeUiState = homeViewModel?.uiState?.collectAsStateWithLifecycle()?.value ?: HomeUiState()
     val selectedPage = mainPagerState.selectedPage
@@ -666,7 +665,12 @@ private fun MainPage(
                         }
                     }
                 } else {
-                    BlurredBar(backdrop = bottomBarBackdrop, blurActive = bottomBarBlurActive) {
+                    // 渐进模糊仅作用于顶栏；底栏保持高斯
+                    BlurredBar(
+                        backdrop = bottomBarBackdrop,
+                        blurActive = bottomBarBlurActive,
+                        blurStyle = TopBarBlurStyle.Gaussian,
+                    ) {
                         NavigationBar(
                             color = barColor,
                             mode = bottomBarDisplayMode,

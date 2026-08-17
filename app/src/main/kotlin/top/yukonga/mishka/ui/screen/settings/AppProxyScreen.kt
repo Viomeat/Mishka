@@ -56,7 +56,6 @@ import top.yukonga.mishka.ui.platform.AppIcon
 import top.yukonga.mishka.ui.platform.getPlainText
 import top.yukonga.mishka.ui.platform.setPlainText
 import top.yukonga.mishka.ui.util.horizontalCutoutPadding
-import top.yukonga.mishka.ui.util.rememberContentReady
 import top.yukonga.mishka.viewmodel.AppProxyMode
 import top.yukonga.mishka.viewmodel.AppProxyViewModel
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -339,8 +338,6 @@ fun AppProxyScreen(
             }
         },
     ) { innerPadding ->
-        val contentReady = rememberContentReady()
-
         searchStatus.SearchBox {
             LazyColumn(
                 modifier = Modifier
@@ -386,8 +383,8 @@ fun AppProxyScreen(
 
                 // 应用列表（AllowAll 模式下不显示）
                 if (uiState.mode != AppProxyMode.AllowAll) {
-                    if (!contentReady || uiState.isLoading) {
-                        // 导航动画中或加载中 → 进度指示器
+                    if (uiState.isLoading) {
+                        // 加载中 → 进度指示器
                         item(key = "loading") {
                             Box(
                                 modifier = Modifier

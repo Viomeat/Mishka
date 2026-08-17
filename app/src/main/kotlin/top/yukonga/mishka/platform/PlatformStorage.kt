@@ -95,12 +95,15 @@ object StorageKeys {
     const val THEME_PALETTE_STYLE = "theme_palette_style"
     const val THEME_ACCENT_COLOR = "theme_accent_color"
     const val THEME_BLUR = "theme_blur"
+    const val THEME_BLUR_STYLE = "theme_blur_style"
     const val THEME_FLOATING_BOTTOM_BAR = "theme_floating_bottom_bar"
     const val THEME_FLOATING_BOTTOM_BAR_STYLE = "theme_floating_bottom_bar_style"
     const val THEME_BOTTOM_BAR_MODE = "theme_bottom_bar_mode"
     const val THEME_DENSITY_SCALE = "theme_density_scale"
     const val DYNAMIC_NOTIFICATION = "dynamic_notification"
     const val PREDICTIVE_BACK = "predictive_back"
+    // 横移返回手势，默认启用；由 AppNavigation 持有状态实时生效，这里只作持久化
+    const val SWIPE_DISMISS = "swipe_dismiss"
     const val HIDE_TASK_CARD = "hide_task_card"
 
     // 一次性迁移标记
