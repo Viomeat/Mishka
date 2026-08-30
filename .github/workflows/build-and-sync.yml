@@ -72,10 +72,10 @@ jobs:
         shell: bash
         run: |
           sdkmanager --licenses <<< "$(printf 'y\n%.0s' {1..100})" >/dev/null
-          sdkmanager --channel=3 \
-            "platform-tools" \
-            "platforms;android-37" \
-            "ndk;27.2.12479018"
+          # API 37 is a preview platform and may not be published by the
+          # repository metadata available to sdkmanager on ubuntu-latest.
+          # The Android Gradle Plugin uses the runner's installed compile SDK.
+          sdkmanager "platform-tools" "ndk;27.2.12479018"
 
       - name: Install CMake and Ninja
         run: |
