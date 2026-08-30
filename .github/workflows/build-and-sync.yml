@@ -71,8 +71,11 @@ jobs:
       - name: Install Android SDK packages
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-37" "ndk;27.2.12479018"
+          sdkmanager --licenses <<< "$(printf 'y\n%.0s' {1..100})" >/dev/null
+          sdkmanager --channel=3 \
+            "platform-tools" \
+            "platforms;android-37" \
+            "ndk;27.2.12479018"
 
       - name: Install CMake and Ninja
         run: |
